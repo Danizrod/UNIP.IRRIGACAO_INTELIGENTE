@@ -17,7 +17,8 @@ Entrega em **01/12/2026**. MVP com um ESP32 e um vaso. Texto acadêmico fora do 
 - [x] Preparar backend, PostgreSQL, MQTT/TLS e Grafana.
 - [x] Verificar ingestão e persistência com dados simulados.
 - [ ] Preparar notebook definitivo, ESP-IDF, identidade do dispositivo e acesso pela rede.
-- [ ] Configurar backup e testar restauração.
+- [x] Implementar backup e verificar restauração em banco temporário isolado.
+- [ ] Agendar backup diário e cópia adicional no notebook definitivo.
 - [ ] Definir pinagem e montar circuito elétrico, hidráulico e plataforma de pesagem.
 - [ ] Calibrar solo, pesagem e medição elétrica; registrar método e erro.
 - [ ] Medir vazão/água entregue e testar vazamento, sifonamento e estabilidade.

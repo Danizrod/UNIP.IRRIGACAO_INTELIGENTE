@@ -29,6 +29,12 @@ Os testes gravam dados identificados como simulados. Foram verificados validaç�
 
 Credenciais em `.env`; certificados em `.local/certs`. Ambos fora do Git. Não remover volumes para reiniciar: contêm os dados. Backup e restauração ainda devem ser preparados.
 
+## Backup
+
+Com Python 3 disponível no notebook, executar `python tools/backup.py backup-and-verify`. O script cria um dump consistente e um manifesto SHA-256 em `.local/backups/`, restaura em banco temporário isolado e verifica as tabelas. O banco de trabalho não é substituído. Para verificar um dump existente: `python tools/backup.py verify CAMINHO.dump`.
+
+Restauração isolada verificada em 12/10/2026. Copiar backups para um local adicional antes do experimento; a cópia no mesmo notebook não protege contra perda do equipamento. O agendamento diário ainda deve ser configurado no notebook definitivo.
+
 ## Configuração e dados
 
 Python 3.12 no container; dependências fixadas em backend/requirements.lock.txt. Imagens da infraestrutura ainda usam tags; congelar antes do experimento. Em configuração nova, tools/bootstrap-local.py exige Python/cryptography, gera credenciais/certificados e preserva configurações existentes. Scripts SQL de inicialização só executam em volume vazio; mudanças posteriores exigem migração.
