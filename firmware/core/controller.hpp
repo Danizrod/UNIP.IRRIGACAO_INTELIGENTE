@@ -9,8 +9,8 @@
 
 namespace irrigation {
 struct Command { std::string id; int64_t issued_at, expires_at; double volume_ml, duration_s; };
-struct Sensors { bool valid=false; double soil=0, available_ml=0, removed_ml=0; int64_t sampled_at=0; };
-struct Limits { bool calibrated=false; double volume_ml=0, duration_s=0, low=0, high=0; int64_t interval_s=0, freshness_s=0; };
+struct Sensors { bool valid=false; double soil=0, available_ml=0, removed_ml=0; int64_t sampled_at=0; bool mass_stable=true; };
+struct Limits { bool calibrated=false; double volume_ml=0, duration_s=0, low=0, high=0; int64_t interval_s=0, freshness_s=0, settle_s=0; };
 // Persist identifiers before allowing actuation. Full storage must fail closed.
 struct Journal { virtual ~Journal()=default; virtual bool observe_time(int64_t)=0; virtual bool contains(const std::string&)=0; virtual bool reserve(const std::string&,int64_t)=0; virtual int64_t last_cycle_at()=0; virtual bool record_cycle_at(int64_t)=0; };
 struct Actuator { virtual ~Actuator()=default; virtual void off()=0; virtual bool on()=0; };
@@ -28,6 +28,7 @@ public:
 class Controller {
  Limits limits; Journal& journal; Actuator& pump;
  std::optional<Command> active; int64_t started=0,last_end=0; double initial_removed=0;
+ bool settling=false;int64_t settle_until=0;std::string terminal_status,terminal_reason;
  bool remote=false,synchronized=false,armed=true;
  bool active_local=false;
  int64_t synchronized_at=0;
@@ -52,6 +53,7 @@ public:
   else if(!local&&(!remote||!synchronized))reason="not_synchronized";
   else if(!local&&c.issued_at<synchronized_at)reason="before_resync";
   else if(!healthy(s,now))reason="invalid_sensors_or_calibration";
+  else if(!s.mass_stable)reason="mass_not_stable";
   else if(c.volume_ml<=0||c.volume_ml>limits.volume_ml||c.duration_s<=0||c.duration_s>limits.duration_s)reason="limits";
   else if(s.available_ml<c.volume_ml)reason="insufficient_water";
   else if(last_end&&now-last_end<limits.interval_s)reason="minimum_interval";
@@ -59,20 +61,32 @@ public:
   if(!reason.empty()){emit({c.id,"rejected",reason,local});return false;}
   if(!emit({c.id,"accepted","validated",local})){pump.off();return false;}
   if(!pump.on()){pump.off();emit({c.id,"failed","actuator_unavailable",local});return false;}
-  active=c;active_local=local;started=now;initial_removed=s.removed_ml;
+  active=c;active_local=local;started=now;initial_removed=s.removed_ml;settling=false;
   if(!emit({c.id,"started","actuation",local})){stop(now,"failed","event_storage_unavailable");return false;}
   return true;
  }
  void stop(int64_t now,const std::string&status,const std::string&reason){pump.off();if(active){if(!emit({active->id,status,reason,active_local}))limits.calibrated=false;active.reset();last_end=now;if(!journal.record_cycle_at(now))limits.calibrated=false;}}
  void watchdog(int64_t now){stop(now,"failed","watchdog");synchronized=false;}
- void tick(const Sensors&s,int64_t now){
+ void tick(const Sensors&s,int64_t now,bool allow_fallback=true){
   if(active){
    if(now<started||!healthy(s,now)||s.available_ml<=0||s.removed_ml<initial_removed){stop(now,"failed","invalid_measurement");return;}
-   if(s.removed_ml-initial_removed>=active->volume_ml){stop(now,"completed","volume_limit");return;}
-   if(now-started>=active->duration_s){stop(now,"failed","duration_limit");return;}
+   if(settling){
+    if(now>=settle_until&&s.mass_stable){stop(now,terminal_status,terminal_reason);return;}
+    if(now>settle_until+limits.settle_s+1){stop(now,"failed","mass_stabilization_timeout");return;}
+    return;
+   }
+   bool volume_reached=s.removed_ml-initial_removed>=active->volume_ml;
+   bool time_reached=now-started>=active->duration_s;
+   if(volume_reached||time_reached){
+    if(!limits.settle_s){stop(now,volume_reached?"completed":"failed",volume_reached?"volume_limit":"duration_limit");return;}
+    pump.off();settling=true;settle_until=now+limits.settle_s;
+    terminal_status=volume_reached?"completed":"failed";terminal_reason=volume_reached?"volume_limit":"duration_limit";
+    if(!journal.record_cycle_at(settle_until))stop(now,"failed","journal_unavailable");
+    return;
+   }
   }
   if(s.soil>=limits.high)armed=true;
-  if(!remote&&!active&&armed&&healthy(s,now)&&s.soil<limits.low){
+  if(allow_fallback&&!remote&&!active&&armed&&healthy(s,now)&&s.soil<limits.low){
    Command c{local_id?local_id():"fallback-"+std::to_string(now),now,now+1,limits.volume_ml,limits.duration_s};
    if(submit(c,s,now,true))armed=false;
   }

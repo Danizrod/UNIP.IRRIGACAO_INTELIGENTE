@@ -9,7 +9,7 @@ from uuid import uuid4
 import paho.mqtt.client as mqtt
 
 from app.contracts import Telemetry
-from device_simulator import DeviceSimulator
+from device_simulator import DeviceSimulator, MultiVesselSimulator
 
 
 def sample():
@@ -39,11 +39,11 @@ def publish_fixture(item):
 
 
 def run_loop(state_path=None, seconds=60, stop_event=None, treatment='T1', fallback_enabled=False,
-             offline_after_s=None, offline_for_s=0):
+             offline_after_s=None, offline_for_s=0, three_units=False):
     """Transporte real, medições explicitamente sintéticas; fixture 5 mL/s e 3 W."""
     from app.contracts import IrrigationCommand
     import threading
-    device = DeviceSimulator(state_path)
+    device = MultiVesselSimulator(state_path) if three_units else DeviceSimulator(state_path)
     if treatment not in ('T1', 'T2', 'T3'):
         raise ValueError('Tratamento desconhecido')
     device.treatment = treatment
@@ -57,6 +57,8 @@ def run_loop(state_path=None, seconds=60, stop_event=None, treatment='T1', fallb
 
     def enqueue(events):
         for event in events:
+            if any(item['topic'] == topic+'events' and item['payload'].get('event_id') == event['event_id'] for item in device.buffer):
+                continue
             device.queue(topic+'events', event)
 
     def on_connect(client, userdata, flags, reason, properties):
@@ -105,14 +107,20 @@ def run_loop(state_path=None, seconds=60, stop_event=None, treatment='T1', fallb
                 if not connected.is_set():
                     enqueue(device.fallback(now))
                 if time.monotonic() >= next_read:
-                    item = sample()
-                    item.treatment = treatment
-                    item.soil_index = device.soil_index
-                    item.sensor_valid = device.sensor_valid
-                    item.reservoir_mass_g = device.reservoir_ml
-                    item.pump_voltage_v = 6 if device.pump_on else 0
-                    item.pump_current_a = .5 if device.pump_on else 0
-                    device.queue(topic+'telemetry', item.model_dump(mode='json'))
+                    readings = device.units.items() if three_units else [(device.unit_id,dict(
+                        treatment=treatment, soil_index=device.soil_index, sensor_valid=device.sensor_valid))]
+                    for unit, state in readings:
+                        item = sample()
+                        item.unit_id, item.experiment_id = unit, device.experiment_id
+                        item.treatment = state['treatment']
+                        item.sensor_valid = state['sensor_valid']
+                        item.soil_index = state['soil_index'] if state['sensor_valid'] else None
+                        item.reservoir_mass_g = device.reservoir_ml
+                        # Monitor compartilhado atribuído só ao vaso do ciclo ativo.
+                        running = device.pump_on and device.unit_id == unit
+                        item.pump_voltage_v = 6 if running else 0
+                        item.pump_current_a = device.power_w/6 if running else 0
+                        device.queue(topic+'telemetry', item.model_dump(mode='json'))
                     next_read = time.monotonic()+2
                 pending = device.buffer[0] if device.buffer else None
             if pending and connected.is_set():
@@ -147,9 +155,10 @@ if __name__ == '__main__':
     parser.add_argument('--state', default=None)
     parser.add_argument('--treatment', choices=['T1','T2','T3'], default='T1')
     parser.add_argument('--fallback', action='store_true', help='Histerese com parâmetros exclusivamente sintéticos')
+    parser.add_argument('--three-units', action='store_true', help='Três vasos sintéticos no mesmo ESP32 e executor')
     args = parser.parse_args()
     if args.loop:
-        run_loop(args.state, args.seconds, treatment=args.treatment, fallback_enabled=args.fallback)
+        run_loop(args.state, args.seconds, treatment=args.treatment, fallback_enabled=args.fallback, three_units=args.three_units)
     else:
         item = publish_fixture(sample())
         print(f'Fixture simulada enviada duas vezes: {item.message_id}. ACK MQTT não comprova persistência.')

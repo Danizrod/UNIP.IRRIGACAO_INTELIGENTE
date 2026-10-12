@@ -25,7 +25,8 @@ with httpx.Client(base_url='http://backend:8000',headers={'Authorization':'Beare
         assert tick_once()==1
         assert tick_once()==0  # mesma leitura/configuração não cria segunda decisão
         wait_for(lambda:any(r['status']=='completed' and datetime.fromisoformat(r['payload']['issued_at'])>=started for r in
-                            api.get('/commands',params={'device_id':'sim-01'}).json()))
+                            api.get('/commands',params={'device_id':'sim-01','unit_id':'sim-pot-01',
+                                'experiment_id':'sim-integration'}).json()))
         print('PASS: leitura → avaliação automática T2 → comando único → ciclo confirmado.')
     finally:
         stop.set();thread.join(timeout=8)

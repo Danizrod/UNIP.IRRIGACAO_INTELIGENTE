@@ -1,6 +1,7 @@
 #include "controller.hpp"
 #include "retention.hpp"
 #include "durable_buffer.hpp"
+#include "shared_rig.hpp"
 #include "cJSON.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -25,13 +26,15 @@
 using namespace irrigation;
 static constexpr const char* TAG="irrigation";
 // No GPIO driver exists until actual components and calibration are reviewed.
-struct DisabledPump:Actuator{
- bool enabled=false;
- void off()override{enabled=false;}
- bool on()override{
+struct DisabledPump:ChannelDriver{
+ int channel=-1;
+ void off_all()override{channel=-1;}
+ bool on(size_t index)override{
 #if CONFIG_IRRIGATION_SIMULATION
-  enabled=true;return true;
+  if(channel>=0)return false;
+  channel=static_cast<int>(index);return true;
 #else
+  (void)index;
   return false;
 #endif
  }
@@ -73,13 +76,15 @@ static bool save_events(const std::deque<std::string>& pending){
  size_t used=offsetof(EventCheckpoint,messages)+state.count*sizeof(state.messages[0]);
  return nvs_set_blob(event_handle,"pending",&state,used)==ESP_OK&&nvs_commit(event_handle)==ESP_OK;
 }
-static Controller* controller=nullptr;
+static SharedRig* controller=nullptr;
 static esp_mqtt_client_handle_t mqtt=nullptr;
-static std::string device,broker,username,password,ca,ssid,wifi_password,ntp,experiment,unit;
+static std::string device,broker,username,password,ca,ssid,wifi_password,ntp,experiment;
+static std::array<UnitIdentity,3> units={UnitIdentity{"","T1"},UnitIdentity{"","T2"},UnitIdentity{"","T3"}};
 struct Message {std::string topic,payload;};
 static Buffer<Message> outbox(32);
 static DurableBuffer* durable_events=nullptr;
-static Sensors sensors; // Invalid by default; no fabricated physical measurements.
+static std::array<Sensors,3> sensors; // Invalid by default; no fabricated physical measurements.
+static double shared_removed_ml=0;
 static bool connected=false;
 static bool subscribed=false;
 static std::atomic<bool> utc_synced{false};
@@ -88,7 +93,7 @@ static int in_flight=-1;
 static bool in_flight_event=false;
 static int early_ack=-1;
 static int early_deleted=-1;
-static bool persist_event(const Event&);
+static bool persist_event(size_t,const Event&);
 static SemaphoreHandle_t mutex;
 static std::string uuid(){
  uint8_t b[16];esp_fill_random(b,sizeof(b));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;char s[37];
@@ -143,9 +148,13 @@ static void mqtt_event(void*,esp_event_base_t,int32_t id,void*data){
   auto j=cJSON_ParseWithLength(e->data,e->data_len);if(!j){xSemaphoreGive(mutex);return;}
   auto cid=str(j,"command_id"),dev=str(j,"device_id"),source=str(j,"source");
   auto experiment=str(j,"experiment_id"),unit=str(j,"unit_id"),treatment=str(j,"treatment"),reason=str(j,"reason");
-  if(valid_uuid(cid)&&dev&&source&&experiment&&unit&&treatment&&reason&&device==dev&&::experiment==experiment&&::unit==unit&&num(j,"schema_version")==1&&!strcmp(source,::source())&&(!strcmp(treatment,"T1")||!strcmp(treatment,"T2")||!strcmp(treatment,"T3"))){
+  if(valid_uuid(cid)&&dev&&source&&experiment&&unit&&treatment&&reason&&device==dev&&::experiment==experiment&&num(j,"schema_version")==1&&!strcmp(source,::source())){
    Command c{cid,iso(str(j,"issued_at")),iso(str(j,"expires_at")),num(j,"target_volume_ml"),num(j,"max_duration_s")};
-   if(c.expires_at-c.issued_at<=300&&c.duration_s<=300)controller->submit(c,sensors,epoch());
+   for(size_t i=0;i<3;++i)if(units[i].unit_id==unit){
+    if(units[i].treatment!=treatment)persist_event(i,{cid,"rejected","unit_treatment_mismatch",false});
+    else if(c.expires_at-c.issued_at<=300&&c.duration_s<=300)controller->submit(i,c,sensors[i],epoch());
+    break;
+   }
   }
   cJSON_Delete(j);
  }
@@ -156,37 +165,35 @@ static void wifi_event(void*,esp_event_base_t base,int32_t id,void*){
  if(base==WIFI_EVENT&&id==WIFI_EVENT_STA_DISCONNECTED)esp_wifi_connect();
  if(base==IP_EVENT&&id==IP_EVENT_STA_GOT_IP&&!ntp.empty())esp_netif_sntp_start();
 }
-static bool persist_event(const Event&e){
+static bool persist_event(size_t channel,const Event&e){
   if(!durable_events)return false;
   auto j=cJSON_CreateObject();cJSON_AddNumberToObject(j,"schema_version",1);
   auto eid=uuid();cJSON_AddStringToObject(j,"event_id",eid.c_str());
   cJSON_AddStringToObject(j,"command_id",e.command_id.c_str());cJSON_AddStringToObject(j,"device_id",device.c_str());
   cJSON_AddStringToObject(j,"source",source());auto stamp=event_stamp();
   cJSON_AddStringToObject(j,"origin",e.local?"local":"remote");
-  cJSON_AddStringToObject(j,"experiment_id",experiment.c_str());cJSON_AddStringToObject(j,"unit_id",unit.c_str());
+  cJSON_AddStringToObject(j,"experiment_id",experiment.c_str());cJSON_AddStringToObject(j,"unit_id",units[channel].unit_id.c_str());cJSON_AddStringToObject(j,"treatment",units[channel].treatment.c_str());
   cJSON_AddBoolToObject(j,"measurements_valid",false);
   cJSON_AddStringToObject(j,"occurred_at",stamp.c_str());cJSON_AddStringToObject(j,"status",e.status.c_str());cJSON_AddStringToObject(j,"reason",e.reason.c_str());
   char*s=cJSON_PrintUnformatted(j);bool saved=s&&durable_events->push_cycle(s,e.status);if(s)free(s);cJSON_Delete(j);
   return saved;
 }
-static void queue_events(){
- for(auto&e:controller->events)persist_event(e);
- controller->events.clear();
-}
-static void queue_synthetic_telemetry(){
+static void queue_synthetic_telemetry(size_t channel){
 #if CONFIG_IRRIGATION_SIMULATION
+ const auto& sensor=sensors[channel];const auto& identity=units[channel];
  auto j=cJSON_CreateObject();cJSON_AddNumberToObject(j,"schema_version",1);
  auto id=uuid();cJSON_AddStringToObject(j,"message_id",id.c_str());
- cJSON_AddStringToObject(j,"device_id",device.c_str());cJSON_AddStringToObject(j,"experiment_id",experiment.c_str());cJSON_AddStringToObject(j,"unit_id",unit.c_str());
- cJSON_AddStringToObject(j,"treatment","T2");cJSON_AddStringToObject(j,"source","simulation");
+ cJSON_AddStringToObject(j,"device_id",device.c_str());cJSON_AddStringToObject(j,"experiment_id",experiment.c_str());cJSON_AddStringToObject(j,"unit_id",identity.unit_id.c_str());
+ cJSON_AddStringToObject(j,"treatment",identity.treatment.c_str());cJSON_AddStringToObject(j,"source","simulation");
  char stamp[32];time_t now=time(nullptr);tm utc;gmtime_r(&now,&utc);strftime(stamp,sizeof(stamp),"%Y-%m-%dT%H:%M:%SZ",&utc);cJSON_AddStringToObject(j,"collected_at",stamp);
- cJSON_AddStringToObject(j,"calibration_id","simulation-fixture-only");cJSON_AddNumberToObject(j,"soil_raw",2000);cJSON_AddNumberToObject(j,"soil_index",sensors.soil);cJSON_AddBoolToObject(j,"sensor_valid",true);
- cJSON_AddNumberToObject(j,"temperature_c",23);cJSON_AddNumberToObject(j,"humidity_pct",50);cJSON_AddNumberToObject(j,"reservoir_mass_g",sensors.available_ml);
+ auto calibration="sim-fixture-"+identity.unit_id;cJSON_AddStringToObject(j,"calibration_id",calibration.c_str());cJSON_AddNumberToObject(j,"soil_raw",2000);cJSON_AddNumberToObject(j,"soil_index",sensor.soil);cJSON_AddBoolToObject(j,"sensor_valid",sensor.valid);
+ cJSON_AddNumberToObject(j,"temperature_c",23);cJSON_AddNumberToObject(j,"humidity_pct",50);cJSON_AddNumberToObject(j,"reservoir_mass_g",sensor.available_ml);
  char*s=cJSON_PrintUnformatted(j);if(s){outbox.push({"irrigation/v1/"+device+"/telemetry",s});free(s);}cJSON_Delete(j);
 #endif
+ (void)channel;
 }
 extern "C" void app_main(){
- pump.off(); // First application action; physical driver intentionally absent.
+ pump.off_all(); // First application action; physical driver intentionally absent.
  setenv("TZ","UTC0",1);tzset();
  if(nvs_flash_init()!=ESP_OK){ESP_LOGE(TAG,"NVS unavailable; locked off");return;}
  static RetainedJournal journal(load_journal(),save_journal);
@@ -194,15 +201,17 @@ extern "C" void app_main(){
  mutex=xSemaphoreCreateMutex();
  nvs_handle_t settings;
  if(nvs_flash_init_partition("provision")==ESP_OK&&nvs_open_from_partition("provision","settings",NVS_READONLY,&settings)==ESP_OK){
-  device=get(settings,"device");broker=get(settings,"broker");username=get(settings,"username");password=get(settings,"password");ca=get(settings,"ca");ssid=get(settings,"ssid");wifi_password=get(settings,"wifi_password");ntp=get(settings,"ntp");experiment=get(settings,"experiment");unit=get(settings,"unit");nvs_close(settings);
+  device=get(settings,"device");broker=get(settings,"broker");username=get(settings,"username");password=get(settings,"password");ca=get(settings,"ca");ssid=get(settings,"ssid");wifi_password=get(settings,"wifi_password");ntp=get(settings,"ntp");experiment=get(settings,"experiment");
+  units[0].unit_id=get(settings,"unit1");if(units[0].unit_id.empty())units[0].unit_id=get(settings,"unit");units[1].unit_id=get(settings,"unit2");units[2].unit_id=get(settings,"unit3");nvs_close(settings);
  }
+ if(units[0].unit_id.empty()||units[1].unit_id.empty()||units[2].unit_id.empty()||units[0].unit_id==units[1].unit_id||units[0].unit_id==units[2].unit_id||units[1].unit_id==units[2].unit_id){ESP_LOGE(TAG,"Configure three distinct units; locked off");return;}
  Limits limits{};
 #if CONFIG_IRRIGATION_SIMULATION
  // Explicit synthetic fixture limits, never physical calibration.
  if(device.rfind("sim-",0)!=0||experiment.rfind("sim-",0)!=0){ESP_LOGE(TAG,"Simulation requires sim- identities");return;}
  limits=Limits{true,50,10,30,60,20,5};
 #endif
- static Controller core(limits,journal,pump,uuid,persist_event);controller=&core;
+ static SharedRig core(units,limits,journal,pump,uuid,persist_event,20,2);controller=&core;
  if(!device.empty()&&broker.rfind("mqtts://",0)==0&&!username.empty()&&!password.empty()&&!ca.empty()&&!ssid.empty()&&!ntp.empty()){
   ESP_ERROR_CHECK(esp_netif_init());ESP_ERROR_CHECK(esp_event_loop_create_default());esp_netif_create_default_wifi_sta();wifi_init_config_t init=WIFI_INIT_CONFIG_DEFAULT();ESP_ERROR_CHECK(esp_wifi_init(&init));
   esp_sntp_config_t clock=ESP_NETIF_SNTP_DEFAULT_CONFIG(ntp.c_str());clock.start=false;clock.sync_cb=clock_synced;ESP_ERROR_CHECK(esp_netif_sntp_init(&clock));
@@ -220,11 +229,12 @@ extern "C" void app_main(){
   std::string publish_topic,publish_payload;
   xSemaphoreTake(mutex,portMAX_DELAY);
 #if CONFIG_IRRIGATION_SIMULATION
-  sensors.valid=utc_synced.load();sensors.soil=40;sensors.available_ml=sensors.removed_ml<1000?1000-sensors.removed_ml:0;sensors.sampled_at=epoch();
-  if(pump.enabled)sensors.removed_ml+=0.1; // Synthetic withdrawal only, not a calibrated flow.
+  if(utc_synced.load())controller->advance(epoch());
+  if(pump.channel>=0){shared_removed_ml+=1;auto&s=sensors[pump.channel];s.soil=s.soil<99?s.soil+1:100;} // Synthetic flow/response only.
+  for(size_t i=0;i<3;++i){auto&s=sensors[i];if(!s.sampled_at)s.soil=40;else s.soil=s.soil>0.001?s.soil-0.001:0;s.valid=utc_synced.load();s.available_ml=shared_removed_ml<1000?1000-shared_removed_ml:0;s.removed_ml=shared_removed_ml;s.sampled_at=epoch();s.mass_stable=controller->stable();}
 #endif
-  controller->tick(sensors,epoch());queue_events();
-  if(utc_synced.load()&&epoch()>1700000000&&epoch()-last_telemetry>=5){queue_synthetic_telemetry();last_telemetry=epoch();}
+  if(utc_synced.load())controller->tick(sensors,epoch());
+  if(utc_synced.load()&&epoch()>1700000000&&epoch()-last_telemetry>=5){for(size_t i=0;i<3;++i)queue_synthetic_telemetry(i);last_telemetry=epoch();}
   if(connected&&subscribed&&utc_synced.load()&&epoch()>1700000000&&outbox.size()==0&&durable_events->size()==0&&in_flight==-1&&!controller->running())controller->synchronize(epoch());
   // PUBACK only releases the delivery buffer; it never proves physical actuation.
   if(connected&&in_flight==-1){

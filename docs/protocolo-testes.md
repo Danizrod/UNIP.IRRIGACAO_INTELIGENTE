@@ -1,12 +1,14 @@
 # Protocolo prático T1/T2/T3
 
-Planejamento em 12/10/2026. Objetivo: comparar economia e desempenho com o menor custo. Nenhuma medição física realizada.
+Decisão aprovada em 12/10/2026: **opção A — ensaio simultâneo contínuo de 30 dias**. Orçamento fixo, sem ampliar materiais. Objetivo: comparar economia e desempenho observados nesta bancada. Nenhuma medição física realizada.
 
 ## Bancada e alcance estatístico
 
 Adotar três vasos equivalentes, um por tratamento fixo, com um ESP32 e três sensores/bombas/acionamentos. Compartilhar DHT22, reservatório, célula/HX711 e INA219. Manter tratamentos durante todo o ensaio e sortear qual vaso recebe cada um. Não ampliar compras automaticamente.
 
-Este é o mínimo para observar os três tratamentos simultaneamente: **n=1 vaso por tratamento**. Permite estatística descritiva dos casos, séries temporais e avaliação técnica; não separa efeito do tratamento de particularidades da planta/vaso. Dias, ciclos e leituras não são réplicas independentes. Não usar teste entre tratamentos tratando milhares de leituras como tamanho amostral. Dois vasos por tratamento (seis no total) seriam o mínimo aritmético para replicação, ainda sem assegurar potência estatística; quantidade adequada exige variabilidade piloto e efeito mínimo relevante. Se a exigência for inferência causal/generalizável, o objetivo permanece incompatível com apenas três vasos fixos.
+Este é o mínimo para observar os três tratamentos simultaneamente: **n=1 vaso por tratamento**. Permite estatística descritiva dos casos, séries temporais e avaliação técnica; não separa efeito do tratamento de particularidades da planta/vaso. Dias, ciclos e leituras não são réplicas independentes. Não usar teste entre tratamentos tratando milhares de leituras como tamanho amostral nem afirmar efeitos generalizáveis.
+
+Analisar o total de 30 dias e, complementarmente, dias 1–15 e 16–30. **Não são duas rodadas nem duas réplicas**: manter plantas, substrato, tratamentos, modelo e parâmetros durante todo o período. A passagem pela quinzena não reinicia o controle nem o consumo acumulado.
 
 Base metodológica: [NIST — princípios de delineamento](https://itl.nist.gov/div898/handbook/pmd/section3/pmd33.htm). Não há aprovação estatística inferencial presumida.
 
@@ -24,7 +26,7 @@ Base metodológica: [NIST — princípios de delineamento](https://itl.nist.gov/
 
 ## Reservatório e medidores compartilhados
 
-As leituras dos vasos ocorrerão no mesmo período; ciclos de irrigação serão **sequenciais**. O software atual ainda não suporta três configurações simultâneas por ESP32.
+As leituras dos vasos ocorrerão no mesmo período; ciclos de irrigação serão **sequenciais**. Configurações e históricos separados por dispositivo/experimento/vaso; uma fila global por ESP32 protege a instrumentação comum. Não liberar bomba publicada/iniciada apenas porque o comando expirou: exigir resultado terminal e estabilização.
 
 1. Fila identificada por experimento, vaso, tratamento e UUID; intertravamento global permite uma única bomba ativa, inclusive em contingência. Evitar prioridade fixa que favoreça um tratamento; registrar espera.
 2. Confirmar bombas desligadas, estabilizar pesagem e registrar massa inicial. Acionar somente o ramo associado ao vaso.
@@ -46,7 +48,7 @@ Resultado principal: água retirada acumulada por vaso na janela válida comum, 
 - Falhas/intervenções: identidade, horário, motivo, responsável, efeito na medição, início/fim e ação tomada. Incluir reposição, manutenção, reboot, contingência, leituras inválidas, perda de dados e ciclo incompleto.
 - Manter dados brutos e metadados. Estatística de dias/ciclos descreve a série observada; não é evidência de replicação biológica.
 
-Hoje Grafana mostra índice do solo por dispositivo, mensagens persistidas, comandos/status, água/energia por ciclo remoto e decisões/previsões. Agregação experimental, linha separada por vaso, ciclos locais, intervenções e alertas operacionais ainda precisam ser implementados/verificados.
+Grafana centraliza linhas de solo por vaso/tratamento, comandos, ciclos, decisões, consumo válido observado, cobertura, contingência, intervenções e rejeições. Seletor total30/primeira15/ultima15 é período de análise, não réplica. Relatório descritivo: `tools/experiment_analysis.py`, usando `config/experiment.json`. Ciclos são alocados pelo horário do resultado terminal; comandos sem resultado são apontados, não estimados como consumo zero. Gráficos e alertas adicionais dependem de evidências físicas.
 
 ## Calendário e início
 
@@ -55,4 +57,4 @@ Hoje Grafana mostra índice do solo por dispositivo, mensagens persistidas, coma
 - Durante novembro: backups, inspeção diária, gráficos e análise incremental; congelar a coleta só no fim. Entrega em 01/12 deixa poucas horas para fechamento. Modelo T3 precisa existir antes de novembro; treinamento em novembro não substitui 30 dias de avaliação de um modelo congelado.
 - Sem bancada/calibração/modelo prontos, não declarar início dos 30 dias nem substituir falhas por simulação. Replanejar prazo ou alcance se não cumprir critérios.
 
-Próxima etapa de software: retenção/provisionamento; depois fila global, contratos/configuração/modelos por vaso, medições compartilhadas e painel consolidado. Aquisição e preparação do notebook serão executadas quando o usuário indicar.
+Manter identidade e tratamento de cada vaso; congelar calibração, parâmetros e modelo antes da coleta. Próximas etapas: notebook, drivers, montagem, calibração e ensaio físico. Aquisição e preparação do notebook serão executadas quando o usuário indicar.

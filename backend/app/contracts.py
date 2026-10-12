@@ -75,6 +75,7 @@ class IrrigationCommand(StrictContract):
 
 
 class CommandEvent(StrictContract):
+    treatment: Literal['T1', 'T2', 'T3'] | None = None
     origin: Literal['remote', 'local'] = 'remote'
     experiment_id: str | None = None
     unit_id: str | None = None
@@ -142,6 +143,8 @@ class DecisionConfiguration(StrictContract):
     cooldown_s: int = Field(gt=0)
     schedule_interval_s: int | None = Field(default=None, gt=0)
     prediction_fallback_enabled: bool = False
+    stabilization_s: float = Field(default=0,ge=0,le=3600)
+    model_path: str | None = None
 
     @model_validator(mode='after')
     def consistency(self):
@@ -150,3 +153,17 @@ class DecisionConfiguration(StrictContract):
         if self.treatment == 'T1' and self.schedule_interval_s is None:
             raise ValueError('T1 exige intervalo')
         return self
+
+
+class Intervention(StrictContract):
+    intervention_id: UUID
+    device_id: str
+    experiment_id: str
+    unit_id: str
+    source: Literal['simulation','physical']
+    kind: Literal['refill','maintenance','calibration','other']
+    status: Literal['started','completed']
+    occurred_at: AwareDatetime
+    reason: str = Field(min_length=1,max_length=300)
+    responsible: str | None = Field(default=None,max_length=80)
+    invalidates_measurements: bool = True

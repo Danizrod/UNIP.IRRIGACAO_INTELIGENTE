@@ -86,3 +86,16 @@ class ProvisionTests(unittest.TestCase):
             table.write_text('provision,app,factory,0x130000,0x10000,\n')
             with self.assertRaises(ValueError):
                 provision.partition_metadata()
+
+
+    def test_three_unit_map_unique_complete_and_legacy_alias(self):
+        self.validation.stop()
+        item=self.settings();item.pop('unit')
+        item.update(unit1='pot-01',unit2='pot-02',unit3='pot-03')
+        with patch.object(provision,'validate_ca'):
+            self.assertEqual(provision.validate(item,'simulation')['unit3'],'pot-03')
+            for change in [dict(unit2='pot-01'),dict(unit='different')]:
+                with self.assertRaises(ValueError):
+                    provision.validate(dict(item,**change),'simulation')
+            item.pop('unit3')
+            with self.assertRaises(ValueError): provision.validate(item,'simulation')

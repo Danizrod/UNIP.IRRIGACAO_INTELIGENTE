@@ -1,16 +1,16 @@
 # Etapas da entrega prática
 
-Entrega em **01/12/2026**. Ensaio planejado com um ESP32 e três vasos (um por tratamento, sem réplicas); unidade mínima demonstrável com um vaso. Texto acadêmico fora do escopo. Itens marcados correspondem ao trabalho já verificado.
+Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos (um por tratamento, sem réplicas), orçamento fixo. Quinzenas são análises complementares. Texto acadêmico fora do escopo. Itens marcados correspondem ao trabalho já verificado.
 
 ## Planejamento e aquisição
 
 - [x] Avaliar referências e registrar a arquitetura aprovada.
-- [x] Revisar materiais para um único circuito, sem reservas obrigatórias.
+- [x] Revisar materiais para um ESP32 e três ramos, sem expansão de orçamento/reservas.
 - [ ] Definir orçamento, peças disponíveis e componentes a comprar.
 - [ ] Conferir anúncios e dimensionar fonte, acionamento e conexões.
 - [ ] Definir local, substrato, planta e responsável pela inspeção diária.
 - [x] Definir protocolo operacional econômico e registrar limite estatístico de n=1 por tratamento.
-- [ ] Resolver delineamento se for exigida inferência estatística generalizável; três vasos fixos não fornecem réplicas.
+- [x] Adotar comparação descritiva de 30 dias e quinzenas, sem inferência generalizável ou falsas réplicas.
 - [ ] Comprar e receber os materiais.
 
 ## Ambiente e montagem
@@ -34,11 +34,13 @@ Entrega em **01/12/2026**. Ensaio planejado com um ESP32 e três vasos (um por t
 - [x] Verificar retenção por expiração e persistência de eventos com falhas/reboot simulados; compilar firmware atualizado.
 - [x] Preparar provisionamento separado do histórico, sem flash automático; verificar gerador NVS e validações.
 - [ ] Validar cortes de energia, desgaste NVS e reconciliação de ciclos interrompidos no dispositivo real.
-- [ ] Conferir capacidade flash e redimensionar partição de aplicativo antes dos drivers/três vasos; build preparado ocupa quase 1 MiB.
+- [x] Preparar partição de aplicativo de 1,5 MiB e compilar núcleo de três canais.
+- [ ] Conferir flash real/mapa antes de gravar; não sobrescrever históricos de mapa anterior.
 - [x] Registrar decisões, ciclos simulados, previsões e rejeições; atualizar painéis.
-- [ ] Implementar configuração/telemetria/modelo por vaso e fila global justa para três bombas sequenciais.
+- [x] Implementar configuração/telemetria/modelo por vaso e fila global; verificar ciclos sequenciais simulados.
 - [ ] Validar medição compartilhada por ciclo e registro de reposições/intervenções.
-- [ ] Consolidar Grafana com resultados por tratamento, qualidade/cobertura, ciclos locais, falhas e intervenções.
+- [x] Consolidar consultas Grafana por tratamento/período, qualidade, ciclos locais, falhas e intervenções.
+- [x] Implementar relatório descritivo com limites de quinzena, deduplicação e ausência sem consumo zero.
 
 Os itens seguintes exigem integração/validação com os componentes físicos:
 

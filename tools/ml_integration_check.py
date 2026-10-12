@@ -28,11 +28,13 @@ with httpx.Client(base_url='http://backend:8000',headers=headers,timeout=10) as 
         response.raise_for_status()
         prediction = response.json()
         assert prediction['source']=='simulation' and prediction['model_version'].startswith('ml-')
-        decision = api.post('/control/evaluate',json={'device_id':'sim-01','request_id':str(uuid4())}).json()
+        decision = api.post('/control/evaluate',json={'device_id':'sim-01','unit_id':'sim-pot-01',
+            'experiment_id':'sim-integration','request_id':str(uuid4())}).json()
         assert decision['actuate'] and decision['reason']=='prediction_below_low',decision
         cid=decision['command_id']
         wait_for(lambda:any(r['payload']['command_id']==cid and r['status']=='completed' for r in
-                            api.get('/commands',params={'device_id':'sim-01'}).json()))
+                            api.get('/commands',params={'device_id':'sim-01','unit_id':'sim-pot-01',
+                                'experiment_id':'sim-integration'}).json()))
         print('PASS: modelo JSON versionado → previsão de fixture → decisão T3 → ciclo simulado confirmado.')
     finally:
         stop.set()

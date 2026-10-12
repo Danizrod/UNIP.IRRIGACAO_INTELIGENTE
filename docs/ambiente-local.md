@@ -31,9 +31,10 @@ docker compose --profile simulation run --rm simulator python integration_check.
 docker compose --profile simulation run --rm simulator python control_integration_check.py
 docker compose --profile simulation run --rm simulator python automatic_integration_check.py
 docker compose --profile simulation run --rm simulator python fallback_integration_check.py
+docker compose --profile simulation run --rm simulator python three_units_integration_check.py
 ```
 
-Verificados 26 testes unitários e cinco testes adicionais de banco em esquema isolado, além de integrações MQTT/TLS, ACL, duplicidade, expiração, rejeições persistidas, decisões, ciclos e desconexão/retomada. Os cinco testes de banco exigem `TEST_DATABASE_URL` e são ignorados no comando padrão. Simulação usa exclusivamente identidade `sim-01` e origem `simulation`; testes de integração devem executar sequencialmente.
+Testes unitários e de banco em esquemas isolados verificam MQTT/TLS, ACL, duplicidade, expiração, rejeições, decisões, ciclos e desconexão/retomada. Testes de banco exigem `TEST_DATABASE_URL` e são ignorados no comando padrão. Simulação usa exclusivamente identidade `sim-01` e origem `simulation`; testes de integração devem executar sequencialmente. A integração de três vasos usa previsões e doses sintéticas, sem medir economia real.
 
 ## Simulação e ML
 
@@ -47,6 +48,12 @@ Pipeline compara Ridge, Random Forest, Gradient Boosting e persistência. Separa
 
 Para demonstração contínua: `docker compose --profile simulation run --rm simulator python simulate.py --loop --seconds 120 --state /state/device.json --treatment T2`. Configurar `/control/config` pela API com limites explícitos **simulados**. Serviço opcional `docker compose --profile control up -d controller` avalia novas leituras; configuração desabilitada por padrão. Desligar após demonstração com `docker compose --profile control stop controller`.
 
+Para três vasos, usar `simulate.py --loop --seconds 120 --three-units --state /state/three-units.json`. Criar três configurações no mesmo dispositivo/experimento, com unidades distintas e T1/T2/T3 fixos. `/control/evaluate` exige `unit_id` e `experiment_id` quando há múltiplos contextos. `stabilization_s` depende do piloto, não de valores sintéticos. Configurar `model_path` do vaso T3 para artefato compatível; exportar treino com `tools/export_telemetry.py ... --unit-id ID`. A fila revalida leitura/previsão antes de publicar e aguarda resultado terminal; falta de confirmação não libera outro ciclo.
+
+Grafana tem seletor de período total30/primeira15/ultima15, linhas por vaso, consumo válido observado, qualidade, ciclos locais, intervenções, rejeições e MAE/RMSE pareados de seis horas. Quinzenas não são réplicas. A janela física segue o protocolo aprovado e o seletor de tempo limita as consultas; para ver novembro inteiro selecionar 01/11 a 01/12. Fonte simulation serve somente à verificação técnica.
+
+Intervenções: `/interventions` registra início/fim, tipo, contexto, motivo e responsável opcional. Início suspende publicação no dispositivo; alterações durante ciclo invalidam as medições afetadas. Relatório: `docker compose --profile simulation run --rm simulator python tools/experiment_analysis.py --plan /app/config/experiment.json --output /data/processed/resultado.json`. A configuração de referência contém IDs que devem corresponder à bancada. Não sobrescreve arquivo existente; relatório vazio/sem cobertura não inventa economia nem consumo zero.
+
 Contrato em `backend/app/contracts.py`; decisões, previsões, comandos, eventos remotos/locais e rejeições ficam registrados. PUBACK não comprova atuação. Medições inválidas são null, não zero. Separar sempre origem/experimento nas consultas.
 
 ## Backup e firmware
@@ -59,7 +66,7 @@ Contrato em `backend/app/contracts.py`; decisões, previsões, comandos, eventos
 
 ## Preparar provisionamento do ESP32
 
-`tools/provision-device.py` gera CSV/bin NVS privados usando o gerador oficial ESP-IDF; não grava dispositivo. Criar `.local/device-settings.json` com `device`, `experiment`, `unit`, `broker` (`mqtts://endereco-do-notebook:8883`), `username`, `ssid`, `ntp` e `ca_file` (caminho do certificado em `.local`). Senhas MQTT/Wi-Fi ausentes são solicitadas sem eco. Modo simulado exige identidades `sim-`; modo físico mantém drivers/atuação bloqueados.
+`tools/provision-device.py` gera CSV/bin NVS privados usando o gerador oficial ESP-IDF; não grava dispositivo. Criar `.local/device-settings.json` com `device`, `experiment`, `unit1`, `unit2`, `unit3` (IDs únicos; T1/T2/T3 nessa ordem), `broker` (`mqtts://endereco-do-notebook:8883`), `username`, `ssid`, `ntp` e `ca_file` (caminho do certificado em `.local`). Senhas MQTT/Wi-Fi ausentes são solicitadas sem eco. Modo simulado exige identidades `sim-`; modo físico mantém drivers/atuação bloqueados.
 
 ```powershell
 python tools/provision-device.py --settings .local/device-settings.json --output .local/provision-01 --mode simulation --csv-only
@@ -68,6 +75,8 @@ python tools/provision-device.py --settings .local/device-settings.json --output
 
 CSV/bin contêm segredos em texto claro; no Windows, chmod não configura ACL: manter `.local` privada, fora do Git e de pastas compartilhadas. O script preserva arquivos existentes. Manifesto registra tamanho/offset/hash da tabela e firmware disponível; isso não comprova firmware já instalado.
 
-Antes de mudar identidade ou contexto de um dispositivo já usado, drenar/reconciliar eventos pendentes com a configuração antiga. O script não migra histórico entre identidades. Ainda não há suporte operacional completo a três vasos no firmware/configuração; o provisionamento atual prepara uma unidade.
+Antes de mudar identidade ou contexto de um dispositivo já usado, drenar/reconciliar eventos pendentes com a configuração antiga. O script não migra histórico entre identidades. Núcleo de três canais preparado e compilado; drivers e funcionamento físico continuam pendentes.
 
-Imagem destinada **somente à partição `provision`** de `firmware/partitions.csv`. Conferir capacidade real e atualizar tabela/firmware compatíveis antes de qualquer gravação manual. Não apagar nem sobrescrever `nvs`, `journal` ou `events`; eles guardam histórico que evita reexecução. Não há flash automático, gravação de eFuses ou alteração do broker. Revisar endereço do notebook, SAN do certificado do broker e CA confiável e ACL por dispositivo antes da conexão; provisionamento/flash ainda exigem ensaio na placa. Gerador oficial ESP-IDF 5.5.1 verificado com credenciais sintéticas: imagem de 65.536 bytes; seis testes unitários aprovados. [Gerador oficial NVS](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/api-reference/storage/nvs_partition_gen.html).
+Imagem destinada **somente à partição `provision`** de `firmware/partitions.csv`. Conferir capacidade real e compatibilidade antes de gravar: offsets novos não migram históricos do mapa anterior. Não apagar/sobrescrever `nvs`, `journal` ou `events`. Não há flash automático, eFuses ou alteração do broker. Revisar endereço, SAN do certificado, CA e ACL; ensaio na placa ainda pendente. Gerador oficial ESP-IDF 5.5.1 verificado com credenciais sintéticas: imagem de 65.536 bytes e sete testes unitários aprovados. [Gerador oficial NVS](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/api-reference/storage/nvs_partition_gen.html).
+
+O formato legado com apenas `unit` continua aceito para artefatos antigos; o firmware de três canais exige `unit1/unit2/unit3`. Não fornecer um mapa parcial. A imagem usa offset/tamanho lidos da tabela atual, sem assumir o mapa anterior: `journal` 0x190000, `events` 0x1a0000 e `provision` 0x1b0000, após aplicação de 1,5 MiB. A capacidade de 2 MiB ou maior e a compatibilidade da tabela/firmware precisam ser conferidas na placa antes de gravar.

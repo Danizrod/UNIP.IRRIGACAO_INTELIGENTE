@@ -4,11 +4,11 @@
 
 ![Montagem conceitual do protótipo](imagens/montagem-conceitual-mvp.png)
 
-Imagem gerada com imagegen a partir da lista de materiais: bancada com um ESP32, um vaso, reservatório pesado, sensores, acionamento e notebook. É uma visualização conceitual, não esquema elétrico ou desenho mecânico validado. Cabo USB de dados liga notebook e ESP32; conferir essa ligação na montagem. A plataforma real deve transmitir o peso pela célula, sem apoios paralelos ou tração de fios/mangueiras que desviem a carga. Pinagem e componentes de potência dependem das peças escolhidas.
+Imagem atualizada com imagegen: um ESP32, três vasos T1/T2/T3, três sensores e bombas, reservatório e medidores compartilhados. É uma visualização conceitual, não esquema elétrico ou desenho mecânico validado. O volume indicado na ilustração é apenas candidato; a capacidade do recipiente e da célula depende do piloto e da massa total. Cabo USB liga notebook e ESP32. A plataforma real deve transmitir o peso pela célula, sem apoios paralelos ou tração de fios/mangueiras. Pinagem e potência dependem das peças escolhidas.
 
-O MVP é um protótipo de bancada com **um ESP32, um vaso e uma bomba**, conectado a uma aplicação executada em notebook. Seu objetivo é demonstrar o ciclo completo de irrigação: medir, transmitir, prever, decidir, irrigar e registrar o resultado.
+O MVP é um protótipo de bancada com **um ESP32, três vasos e três bombas**, conectado a uma aplicação local no notebook. Demonstra medir, transmitir, prever, decidir, irrigar e registrar resultados por tratamento.
 
-Para o ensaio escolhido em 12/10/2026, conectar **três unidades vaso/sensor/bomba** ao mesmo ESP32, uma por T1/T2/T3. Compartilhar ambiente, reservatório e medidores, executando ciclos sequenciais identificados. Essa adaptação ainda não está implementada; detalhes e limites estatísticos estão no [protocolo](protocolo-testes.md). A imagem representa a unidade mínima, não a bancada inteira de três vasos.
+Opção A aprovada: manter **T1/T2/T3 fixos por 30 dias simultâneos**, sem ampliar orçamento. Compartilhar ambiente, reservatório e medidores, executando uma bomba por vez e aguardando estabilização. Analisar também quinzenas, sem reiniciar o ensaio ou criar réplicas fictícias. Detalhes no [protocolo](protocolo-testes.md).
 
 A entrega inclui montagem, software, calibração, testes e documentação técnica. Não inclui a criação do texto acadêmico.
 
@@ -48,7 +48,7 @@ O volume retirado é estimado pela diferença de massa estabilizada antes/depois
 | T3 — preditivo | Usa previsão de umidade e regras determinísticas para decidir momento e volume. |
 | Contingência local | Quando o modo remoto/preditivo fica indisponível, usa histerese local somente com sensores, água e configuração válidos. |
 
-O vaso pode demonstrar os modos separadamente. Alternar modos no mesmo vaso não constitui, por si só, um experimento comparativo independente entre tratamentos.
+Cada vaso mantém seu tratamento durante todo o ensaio. Um vaso por tratamento fornece n=1; quinzenas, dias e ciclos não são réplicas independentes.
 
 ## Proteções e continuidade
 
@@ -77,8 +77,8 @@ Treinamento depende de dados físicos preliminares suficientes. Dados simulados 
 
 O índice calibrado do sensor não será chamado de umidade volumétrica sem calibração apropriada. A pesagem mede retirada do reservatório, e a medição elétrica cobre o ramo da bomba. Chuva externa não molha o vaso coberto e deve ser tratada separadamente em simulação.
 
-Um vaso é suficiente para demonstrar este MVP. O protocolo operacional atual foi definido para três vasos, um por tratamento: comparação simultânea exploratória durante 30 dias, sem réplicas independentes por tratamento. Inferência sobre efeitos gerais permanece sem delineamento suficiente. Economia superior a 20%, MAE inferior a três pontos e conformidade de 95% são metas a avaliar, não garantias do protótipo.
+O protocolo aprovado usa três vasos, um por tratamento: comparação simultânea exploratória durante 30 dias, sem réplicas por tratamento. Inferência sobre efeitos gerais não é sustentada automaticamente. Economia superior a 20%, MAE inferior a três pontos e conformidade de 95% são metas a avaliar, não garantias.
 
-**Estado registrado em 12/10/2026:** fluxo de software, controles T1/T2/T3, ML, contingência e registros verificados em simulação. Firmware preparado sem drivers físicos; atuação física permanece bloqueada. Montagem, calibração, treinamento com dados reais e medições físicas ainda pendentes. Previsão estima solo observado sob a política coletada; não representa automaticamente um cenário sem irrigação.
+**Estado em 12/10/2026:** configuração/históricos por vaso, fila compartilhada, ciclos sequenciais e atribuição de consumos verificados em simulação; firmware de três canais compilado. Grafana centraliza a visualização. Drivers, montagem, calibração, modelo com dados físicos e medições reais continuam pendentes; atuação física bloqueada. Previsão estima solo observado sob a política coletada, não cenário sem irrigação.
 
 Documentos relacionados: [materiais](materiais-tcc.md), [tarefas](tasks-tcc.md) e [ambiente local](ambiente-local.md).

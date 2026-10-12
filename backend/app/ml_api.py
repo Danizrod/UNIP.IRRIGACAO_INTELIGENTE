@@ -29,7 +29,9 @@ def predict(item: PredictionRequest):
             now = datetime.now(timezone.utc)
             if not 0 <= (now - telemetry.collected_at).total_seconds() <= 120:
                 raise ValueError('Telemetria fora da janela de inferência')
-            artifact = load_model(os.environ.get('MODEL_PATH', '/models/active.json'))
+            from app.store import resolve_configuration
+            config=resolve_configuration(conn,telemetry.device_id,telemetry.unit_id,telemetry.experiment_id)
+            artifact = load_model(config.model_path or os.environ.get('MODEL_PATH', '/models/active.json'))
             result = infer(artifact, telemetry.model_dump(mode='json'))
             prediction = Prediction(prediction_id=uuid4(), device_id=item.device_id,
                 telemetry_message_id=item.telemetry_message_id, source=telemetry.source,

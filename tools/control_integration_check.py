@@ -69,7 +69,7 @@ def main():
         try:
             response = api.post('/control/config', json=config)
             assert response.status_code == 200, response.text
-            request = {'device_id':'sim-01', 'request_id':str(uuid4())}
+            request = {'device_id':'sim-01', 'unit_id':'sim-pot-01', 'experiment_id':'sim-integration', 'request_id':str(uuid4())}
             result = api.post('/control/evaluate', json=request)
             assert result.status_code == 200, result.text
             decision = result.json()
@@ -119,7 +119,7 @@ def main():
             item.treatment = 'T3'
             item.soil_index = 25
             api.post('/telemetry', json=item.model_dump(mode='json')).raise_for_status()
-            gap = api.post('/control/evaluate', json={'device_id':'sim-01','request_id':str(uuid4())}).json()
+            gap = api.post('/control/evaluate', json={'device_id':'sim-01','unit_id':'sim-pot-01','experiment_id':'sim-integration','request_id':str(uuid4())}).json()
             assert not gap['actuate'], gap
             assert gap['reason'] == 'prediction_unavailable', gap
         finally:

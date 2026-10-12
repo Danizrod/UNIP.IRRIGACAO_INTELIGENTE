@@ -83,26 +83,28 @@ def event_create(item: CommandEvent):
 
 
 @app.get('/commands', dependencies=[Depends(authorize)])
-def command_list(device_id: str, limit: int = Query(default=50,ge=1,le=500)):
+def command_list(device_id: str, limit: int = Query(default=50,ge=1,le=500),unit_id: str | None=None,experiment_id: str | None=None):
     with connect() as conn:
-        return conn.execute('SELECT payload,status FROM commands WHERE device_id=%s ORDER BY issued_at DESC LIMIT %s',(device_id,limit)).fetchall()
+        return conn.execute("SELECT payload,status FROM commands WHERE device_id=%s AND (%s::text IS NULL OR payload->>'unit_id'=%s) AND (%s::text IS NULL OR payload->>'experiment_id'=%s) ORDER BY issued_at DESC LIMIT %s",(device_id,unit_id,unit_id,experiment_id,experiment_id,limit)).fetchall()
 
 
 @app.post('/control/config', dependencies=[Depends(authorize)])
 def configure(item: DecisionConfiguration):
     with connect() as conn:
-        conn.execute('INSERT INTO control_configs(device_id,payload) VALUES(%s,%s) ON CONFLICT(device_id) DO UPDATE SET payload=excluded.payload,updated_at=now()', (item.device_id,Jsonb(item.model_dump(mode='json'))))
+        conn.execute("INSERT INTO control_configs(device_id,payload) VALUES(%s,%s) ON CONFLICT(device_id,(payload->>'experiment_id'),(payload->>'unit_id')) DO UPDATE SET payload=excluded.payload,updated_at=now()", (item.device_id,Jsonb(item.model_dump(mode='json'))))
     return {'status':'stored','physical_actuation_enabled':False}
 
 
 class EvaluationRequest(StrictContract):
     device_id: str
     request_id: UUID
+    unit_id: str | None = None
+    experiment_id: str | None = None
 
 
 @app.post('/control/evaluate', dependencies=[Depends(authorize)])
 def control_evaluate(item: EvaluationRequest):
-    return persist_result(lambda: evaluate(item.device_id,item.request_id))
+    return persist_result(lambda: evaluate(item.device_id,item.request_id,item.unit_id,item.experiment_id))
 
 
 @app.post('/predictions', dependencies=[Depends(authorize)])
@@ -146,3 +148,16 @@ def rejections(device_id: str = Query(pattern=r'^[a-z0-9][a-z0-9-]{0,47}$'),
     with connect() as conn:
         return conn.execute('SELECT topic,received_at,reason FROM rejected_messages WHERE topic LIKE %s ORDER BY received_at DESC LIMIT %s',
                             (f'irrigation/v1/{device_id}/%', limit)).fetchall()
+
+
+from app.contracts import Intervention
+from app.store import save_intervention
+
+@app.post('/interventions',dependencies=[Depends(authorize)])
+def intervention_create(item: Intervention):
+    return persist_result(lambda: {'status':'stored' if save_intervention(item) else 'duplicate'})
+
+@app.get('/interventions',dependencies=[Depends(authorize)])
+def intervention_list(device_id: str,unit_id: str | None=None):
+    with connect() as conn:
+        return conn.execute("SELECT payload FROM interventions WHERE device_id=%s AND (%s::text IS NULL OR unit_id=%s) ORDER BY started_at DESC LIMIT 100",(device_id,unit_id,unit_id)).fetchall()

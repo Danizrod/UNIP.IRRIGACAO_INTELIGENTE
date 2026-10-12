@@ -39,7 +39,7 @@ frames = result['results']['A']['frames']
 assert frames and frames[0]['data']['values'][0][0] > 0
 for panel in dashboard['dashboard']['panels']:
     for target in panel.get('targets', []):
-        query = target['rawSql'].replace('${source:sqlstring}', "'simulation'").replace('${experiment:sqlstring}', "'sim-integration'")
+        query = target['rawSql'].replace('${source:sqlstring}', "'simulation'").replace('${experiment:sqlstring}', "'sim-integration'").replace('${period:sqlstring}', "'total30'")
         target_result = request('/api/ds/query', {'from': str(int(time.time()*1000)-86400000),
             'to': str(int(time.time()*1000)), 'queries': [{'refId':'A','datasource':{'uid':'irrigation-postgres','type':'postgres'},
             'format':target['format'],'rawSql':query,'intervalMs':1000,'maxDataPoints':100}]})

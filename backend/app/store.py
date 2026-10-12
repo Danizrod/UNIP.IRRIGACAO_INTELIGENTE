@@ -66,24 +66,20 @@ def save_command(item):
         if not item.issued_at <= now < item.expires_at:
             raise ValueError('Comando futuro ou vencido')
         # A per-device transactional lock prevents overlapping commands across API/worker.
-        conn.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', (item.device_id,))
         active = conn.execute("SELECT 1 FROM commands WHERE device_id=%s AND status IN ('queued','published','accepted','started') AND (expires_at>now() OR status='started')", (item.device_id,)).fetchone()
         if active:
             raise ValueError('Há um comando ativo para o dispositivo')
         from app.contracts import DecisionConfiguration
         from app.control import decide, configuration_key, hysteresis_state
-        cfgrow = conn.execute('SELECT payload FROM control_configs WHERE device_id=%s', (item.device_id,)).fetchone()
-        if not cfgrow:
-            raise ValueError('Configuração ausente')
-        cfg = DecisionConfiguration.model_validate(cfgrow['payload'])
+        cfg = resolve_configuration(conn,item.device_id,item.unit_id,item.experiment_id)
         if (item.experiment_id,item.unit_id,item.treatment,item.source) != (cfg.experiment_id,cfg.unit_id,cfg.treatment,cfg.source):
             raise ValueError('Contexto diverge da configuração')
         if item.max_duration_s > cfg.max_duration_s or item.target_volume_ml > cfg.target_volume_ml:
             raise ValueError('Comando excede limites configurados')
-        tr = conn.execute('SELECT payload FROM telemetry WHERE device_id=%s AND experiment_id=%s AND source=%s ORDER BY collected_at DESC LIMIT 1', (item.device_id,item.experiment_id,item.source)).fetchone()
+        tr = conn.execute('SELECT payload FROM telemetry WHERE device_id=%s AND experiment_id=%s AND source=%s AND unit_id=%s ORDER BY collected_at DESC LIMIT 1', (item.device_id,item.experiment_id,item.source,item.unit_id)).fetchone()
         telemetry = Telemetry.model_validate(tr['payload']) if tr else None
         # Manual simulation commands still obey sensor/reservoir/calibration/cooldown guards.
-        last = conn.execute("SELECT issued_at FROM commands WHERE device_id=%s AND status!='rejected' ORDER BY issued_at DESC LIMIT 1", (item.device_id,)).fetchone()
+        last = conn.execute("SELECT issued_at FROM commands WHERE device_id=%s AND payload->>'experiment_id'=%s AND payload->>'unit_id'=%s AND status NOT IN ('rejected','expired') ORDER BY issued_at DESC LIMIT 1", (item.device_id,item.experiment_id,item.unit_id)).fetchone()
         allowed, reason = decide(cfg,telemetry,now,last['issued_at'] if last else None,simulation_enabled=True)
         if reason in ('control_disabled','missing_telemetry','telemetry_context_mismatch','stale_telemetry','invalid_or_uncalibrated_sensor','insufficient_or_unknown_reservoir','cooldown','soil_at_or_above_high'):
             raise ValueError(reason)
@@ -103,13 +99,18 @@ def save_event(item):
         command = conn.execute('SELECT * FROM commands WHERE command_id=%s FOR UPDATE', (item.command_id,)).fetchone()
         if not command:
             raise ValueError('Comando desconhecido')
+        if item.status in ('completed','failed') and item.measurements_valid:
+            interference=conn.execute("SELECT 1 FROM interventions WHERE device_id=%s AND (payload->>'invalidates_measurements')::boolean AND started_at<=%s AND (ended_at IS NULL OR ended_at>=%s) LIMIT 1",(item.device_id,item.occurred_at,command['issued_at'])).fetchone()
+            if interference:
+                payload.update(measurements_valid=False,volume_ml=None,energy_wh=None)
+                payload['reason']='intervention_invalidated_measurements'
         previous = conn.execute('SELECT payload FROM command_events WHERE event_id=%s', (item.event_id,)).fetchone()
         if previous:
             from app.contracts import CommandEvent
             if CommandEvent.model_validate(previous['payload']).model_dump(mode='json') != payload:
                 raise MessageConflict('event_id reutilizado')
             return False
-        if item.device_id != command['device_id'] or item.source != command['source']:
+        if item.device_id != command['device_id'] or item.source != command['source'] or (item.unit_id is not None and item.unit_id!=command['payload']['unit_id']) or (item.experiment_id is not None and item.experiment_id!=command['payload']['experiment_id']) or (item.treatment is not None and item.treatment!=command['payload']['treatment']):
             raise ValueError('Evento diverge do comando')
         latest = conn.execute('SELECT occurred_at FROM command_events WHERE command_id=%s ORDER BY occurred_at DESC LIMIT 1', (item.command_id,)).fetchone()
         if item.occurred_at < command['issued_at'] or (latest and item.occurred_at < latest['occurred_at']):
@@ -159,7 +160,7 @@ def save_rejection(topic, payload, reason):
                      (topic[:256], reason[:300], payload[:8192]))
 
 
-def evaluate(device_id, request_id):
+def evaluate(device_id, request_id, unit_id=None, experiment_id=None):
     from datetime import datetime, timedelta, timezone
     from uuid import uuid4
     from app.contracts import DecisionConfiguration, IrrigationCommand, Prediction
@@ -168,28 +169,26 @@ def evaluate(device_id, request_id):
         conn.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', (device_id,))
         old = conn.execute('SELECT payload FROM decisions WHERE request_id=%s', (request_id,)).fetchone()
         if old:
-            if old['payload']['device_id'] != device_id:
+            if old['payload']['device_id'] != device_id or (unit_id is not None and old['payload'].get('unit_id') != unit_id) or (experiment_id is not None and old['payload'].get('experiment_id') != experiment_id):
                 raise MessageConflict('request_id reutilizado para outro dispositivo')
             return old['payload']
-        row = conn.execute('SELECT payload FROM control_configs WHERE device_id=%s', (device_id,)).fetchone()
-        if not row:
-            raise ValueError('Configuração ausente')
-        config = DecisionConfiguration.model_validate(row['payload'])
-        row = conn.execute('SELECT payload FROM telemetry WHERE device_id=%s AND experiment_id=%s AND source=%s ORDER BY collected_at DESC LIMIT 1', (device_id,config.experiment_id,config.source)).fetchone()
+        config = resolve_configuration(conn,device_id,unit_id,experiment_id)
+        unit_id,experiment_id=config.unit_id,config.experiment_id
+        row = conn.execute('SELECT payload FROM telemetry WHERE device_id=%s AND experiment_id=%s AND source=%s AND unit_id=%s ORDER BY collected_at DESC LIMIT 1', (device_id,config.experiment_id,config.source,config.unit_id)).fetchone()
         telemetry = Telemetry.model_validate(row['payload']) if row else None
-        row = conn.execute('SELECT payload FROM predictions WHERE device_id=%s ORDER BY predicted_at DESC LIMIT 1', (device_id,)).fetchone()
+        row = conn.execute("SELECT p.payload FROM predictions p JOIN telemetry t ON t.device_id=p.device_id AND t.message_id=(p.payload->>'telemetry_message_id')::uuid WHERE p.device_id=%s AND t.experiment_id=%s AND t.unit_id=%s AND t.source=%s ORDER BY p.predicted_at DESC LIMIT 1", (device_id,config.experiment_id,config.unit_id,config.source)).fetchone()
         prediction = Prediction.model_validate(row['payload']) if row else None
-        previous = conn.execute("SELECT issued_at FROM commands WHERE device_id=%s AND status!='rejected' ORDER BY issued_at DESC LIMIT 1", (device_id,)).fetchone()
-        active = conn.execute("SELECT 1 FROM commands WHERE device_id=%s AND status IN ('queued','published','accepted','started') AND (expires_at>now() OR status='started')", (device_id,)).fetchone()
+        previous = conn.execute("SELECT issued_at FROM commands WHERE device_id=%s AND payload->>'experiment_id'=%s AND payload->>'unit_id'=%s AND status NOT IN ('rejected','expired') ORDER BY issued_at DESC LIMIT 1", (device_id,config.experiment_id,config.unit_id)).fetchone()
+        active = conn.execute("SELECT 1 FROM commands WHERE device_id=%s AND payload->>'experiment_id'=%s AND payload->>'unit_id'=%s AND (status IN ('published','accepted','started') OR (status='queued' AND expires_at>now()))", (device_id,config.experiment_id,config.unit_id)).fetchone()
         now = datetime.now(timezone.utc)
         config_key = configuration_key(config)
-        last_decision = conn.execute('SELECT payload FROM decisions WHERE device_id=%s ORDER BY created_at DESC LIMIT 1', (device_id,)).fetchone()
+        last_decision = conn.execute("SELECT payload FROM decisions WHERE device_id=%s AND payload->>'experiment_id'=%s AND payload->>'unit_id'=%s ORDER BY created_at DESC LIMIT 1", (device_id,config.experiment_id,config.unit_id)).fetchone()
         prior_latch = bool(last_decision and last_decision['payload'].get('configuration_key') == config_key and last_decision['payload'].get('hysteresis_latched', False))
         # Stale data cannot change state; valid high readings release the latch even during cooldown.
         fresh = telemetry is not None and 0 <= (now-telemetry.collected_at).total_seconds() <= config.max_telemetry_age_s
         latch = hysteresis_state(config,telemetry,prior_latch) if fresh else prior_latch
         act, reason = decide(config,telemetry,now,previous['issued_at'] if previous else None,prediction,bool(active),os.environ.get('SIMULATION_CONTROL_ENABLED') == 'true', latch)
-        result = {'request_id': str(request_id), 'device_id':device_id, 'reason':reason, 'actuate':act, 'telemetry_message_id':str(telemetry.message_id) if telemetry else None, 'prediction_id':str(prediction.prediction_id) if prediction else None, 'command_id':None, 'configuration_key':config_key, 'hysteresis_latched':latch}
+        result = {'request_id': str(request_id), 'device_id':device_id, 'experiment_id':config.experiment_id,'unit_id':config.unit_id, 'reason':reason, 'actuate':act, 'telemetry_message_id':str(telemetry.message_id) if telemetry else None, 'prediction_id':str(prediction.prediction_id) if prediction else None, 'command_id':None, 'configuration_key':config_key, 'hysteresis_latched':latch}
         if act:
             command = IrrigationCommand(command_id=uuid4(),decision_id=request_id,device_id=device_id,experiment_id=config.experiment_id,unit_id=config.unit_id,treatment=config.treatment,source=config.source,issued_at=now,expires_at=now+timedelta(seconds=60),target_volume_ml=config.target_volume_ml,max_duration_s=config.max_duration_s,reason=reason,model_version=prediction.model_version if prediction and config.treatment=='T3' and reason=='prediction_below_low' else None)
             conn.execute('INSERT INTO commands(command_id,device_id,source,issued_at,expires_at,payload) VALUES(%s,%s,%s,%s,%s,%s)', (command.command_id,device_id,command.source,now,command.expires_at,Jsonb(command.model_dump(mode='json'))))
@@ -197,3 +196,75 @@ def evaluate(device_id, request_id):
             result['command_id'] = str(command.command_id)
         conn.execute('INSERT INTO decisions(request_id,device_id,payload) VALUES(%s,%s,%s)', (request_id,device_id,Jsonb(result)))
         return result
+
+
+def resolve_configuration(conn, device_id, unit_id=None, experiment_id=None):
+    from app.contracts import DecisionConfiguration
+    rows=conn.execute("SELECT payload FROM control_configs WHERE device_id=%s AND (%s::text IS NULL OR payload->>'unit_id'=%s) AND (%s::text IS NULL OR payload->>'experiment_id'=%s)",(device_id,unit_id,unit_id,experiment_id,experiment_id)).fetchall()
+    if not rows:
+        raise ValueError('Configuração ausente')
+    if len(rows)!=1:
+        raise ValueError('Contexto ambíguo; informe experiment_id e unit_id')
+    return DecisionConfiguration.model_validate(rows[0]['payload'])
+
+
+def device_barrier(conn, device_id, now):
+    # Once delivered/accepted/started, only a terminal device event can release the pump.
+    if conn.execute("SELECT 1 FROM commands WHERE device_id=%s AND status IN ('published','accepted','started') LIMIT 1",(device_id,)).fetchone():
+        return 'active_command'
+    if conn.execute("SELECT 1 FROM interventions WHERE device_id=%s AND status='started' LIMIT 1",(device_id,)).fetchone():
+        return 'intervention_active'
+    local=conn.execute("SELECT DISTINCT ON(command_id) status FROM local_cycle_events WHERE device_id=%s ORDER BY command_id,received_at DESC",(device_id,)).fetchall()
+    if any(row['status'] in ('accepted','started') for row in local):
+        return 'local_cycle_active'
+    last=conn.execute("SELECT max(e.received_at) AS at FROM command_events e JOIN commands c USING(command_id) WHERE c.device_id=%s AND e.status IN ('completed','failed')",(device_id,)).fetchone()
+    cfgs=conn.execute('SELECT payload FROM control_configs WHERE device_id=%s',(device_id,)).fetchall()
+    settle=max((row['payload'].get('stabilization_s',0) for row in cfgs),default=0)
+    if last and last['at'] and (now-last['at']).total_seconds()<settle:
+        return 'awaiting_stabilization'
+    return None
+
+
+def revalidate_queued(conn, command, now):
+    from app.contracts import DecisionConfiguration, Prediction
+    from app.control import decide
+    cfg=resolve_configuration(conn,command['device_id'],command['unit_id'],command['experiment_id'])
+    if command['source'] != 'simulation' or os.environ.get('SIMULATION_CONTROL_ENABLED')!='true':
+        return 'physical_actuation_disabled'
+    if command['max_duration_s']>cfg.max_duration_s or command['target_volume_ml']>cfg.target_volume_ml:
+        return 'configuration_limits_changed'
+    row=conn.execute('SELECT payload FROM telemetry WHERE device_id=%s AND experiment_id=%s AND unit_id=%s AND source=%s ORDER BY collected_at DESC LIMIT 1',(cfg.device_id,cfg.experiment_id,cfg.unit_id,cfg.source)).fetchone()
+    reading=Telemetry.model_validate(row['payload']) if row else None
+    # The queued request must still be safe. Predictions are tied to its current unit/readings.
+    row=conn.execute("SELECT p.payload FROM predictions p JOIN telemetry t ON t.device_id=p.device_id AND t.message_id=(p.payload->>'telemetry_message_id')::uuid WHERE p.device_id=%s AND t.experiment_id=%s AND t.unit_id=%s ORDER BY p.predicted_at DESC LIMIT 1",(cfg.device_id,cfg.experiment_id,cfg.unit_id)).fetchone()
+    prediction=Prediction.model_validate(row['payload']) if row else None
+    previous=conn.execute("SELECT issued_at FROM commands WHERE device_id=%s AND payload->>'experiment_id'=%s AND payload->>'unit_id'=%s AND command_id<>%s AND status NOT IN ('rejected','expired','queued') ORDER BY issued_at DESC LIMIT 1",(cfg.device_id,cfg.experiment_id,cfg.unit_id,command['command_id'])).fetchone()
+    decision=conn.execute('SELECT payload FROM decisions WHERE request_id=%s',(command.get('decision_id'),)).fetchone() if command.get('decision_id') else None
+    latch=bool(decision and decision['payload'].get('hysteresis_latched'))
+    allowed,reason=decide(cfg,reading,now,previous['issued_at'] if previous else None,prediction,False,True,latch)
+    # Manual commands retain legacy policy override but never override safety guards.
+    safety={'control_disabled','missing_telemetry','telemetry_context_mismatch','stale_telemetry','invalid_or_uncalibrated_sensor','insufficient_or_unknown_reservoir','cooldown','soil_at_or_above_high'}
+    if reason in safety or (command.get('decision_id') and not allowed):
+        return reason
+    return None
+
+
+def save_intervention(item):
+    payload=item.model_dump(mode='json')
+    with connect() as conn:
+        conn.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',(item.device_id,))
+        cfg=resolve_configuration(conn,item.device_id,item.unit_id,item.experiment_id)
+        if cfg.source!=item.source:
+            raise ValueError('Intervenção diverge da origem configurada')
+        old=conn.execute('SELECT * FROM interventions WHERE intervention_id=%s FOR UPDATE',(item.intervention_id,)).fetchone()
+        if old:
+            if old['payload']==payload:
+                return False
+            if item.status!='completed' or old['status']!='started' or any(old['payload'][k]!=payload[k] for k in ('device_id','experiment_id','unit_id','kind','source')) or item.occurred_at<old['started_at']:
+                raise MessageConflict('Intervenção inconsistente')
+            conn.execute('UPDATE interventions SET status=%s,ended_at=%s,payload=%s WHERE intervention_id=%s',(item.status,item.occurred_at,Jsonb(payload),item.intervention_id))
+        else:
+            if item.status!='started':
+                raise ValueError('Intervenção exige registro inicial')
+            conn.execute('INSERT INTO interventions VALUES(%s,%s,%s,%s,%s,%s,%s,NULL,%s)',(item.intervention_id,item.device_id,item.experiment_id,item.unit_id,item.kind,item.status,item.occurred_at,Jsonb(payload)))
+        return True

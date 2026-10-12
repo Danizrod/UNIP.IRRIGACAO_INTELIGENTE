@@ -1,8 +1,8 @@
 # Materiais para montagem do TCC
 
-Lista atualizada para **um ESP32 e três vasos**, um por T1/T2/T3, conforme escolha do usuário em 12/10/2026. Sem peças de reserva. Três vasos permitem comparação simultânea exploratória, sem réplicas por tratamento.
+Lista aprovada para **um ESP32 e três vasos**, um por T1/T2/T3 durante 30 dias contínuos. Orçamento fixo: não ampliar materiais, comprar reservas ou renovar plantas/substrato na quinzena. Três vasos permitem comparação simultânea exploratória, sem réplicas por tratamento.
 
-As quantidades indicam o que deve estar disponível, não o que obrigatoriamente precisa ser comprado. Reutilizar cabo USB, fonte compatível, recipientes, vaso, bandeja, suportes e ferramentas; emprestar instrumentos quando possível. Não há exigência explícita de mais de um vaso nos documentos iniciais. O pré-projeto exige comparação T1/T2/T3 por 30 dias, mas não fixa quantidade de vasos; O protocolo operacional está em [protocolo-testes.md](protocolo-testes.md).
+As quantidades indicam o que deve estar disponível, não o que obrigatoriamente precisa ser comprado. Reutilizar cabo USB, fonte compatível, recipientes, vasos, bandejas, suportes e ferramentas; emprestar instrumentos quando possível. Os documentos originais não fixam quantidade de vasos; os três foram escolhidos para observar T1/T2/T3 simultaneamente. O [protocolo](protocolo-testes.md) preserva os 30 dias e registra os limites estatísticos.
 
 ## Componentes e montagem
 
@@ -51,4 +51,4 @@ Manter um ESP32, um DHT22, um HX711/célula, um INA219, uma fonte e um reservat�
 
 O reservatório de ~1 L é candidato; dimensionar autonomia conjunta e massa máxima após o piloto. Reaproveitar recipiente maior se necessário, sem trocar a célula antes de conferir toda a massa. Fonte e proteções dependem da corrente real e da arquitetura de acionamento.
 
-Orçamento ainda a definir. Não comprar reservas. Não há aquisição autorizada pelo agente. A imagem atual mostra a unidade mínima de um vaso; o ensaio usa três unidades conectadas ao mesmo controlador.
+Respeitar o limite do orçamento atual; conferir modelos e reaproveitamento antes da aquisição. Não há compra automática pelo agente. A imagem mostra as três unidades conectadas ao mesmo controlador. Análises de 15 dias reutilizam a coleta contínua, sem novos materiais.

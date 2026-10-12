@@ -1,9 +1,22 @@
 """Modelo determinístico de dispositivo; nunca aciona hardware nem valida agronomia."""
 import json
+import time
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
+
+
+def replace_state(tmp, target):
+    # Windows/OneDrive pode manter breve bloqueio; nunca ignorar falha de persistência.
+    for attempt in range(4):
+        try:
+            tmp.replace(target)
+            return
+        except PermissionError:
+            if attempt == 3:
+                raise
+            time.sleep(.05)
 
 
 class DeviceSimulator:
@@ -42,7 +55,7 @@ class DeviceSimulator:
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.state_path.with_suffix('.tmp')
             tmp.write_text(json.dumps(dict(journal=self.journal, buffer=list(self.buffer), dropped=self.dropped)))
-            tmp.replace(self.state_path)
+            replace_state(tmp, self.state_path)
 
     def queue(self, topic, payload):
         if len(self.buffer) == self.buffer.maxlen:
@@ -58,6 +71,7 @@ class DeviceSimulator:
         return dict(schema_version=1, event_id=str(uuid4()), command_id=str(command['command_id']),
                     device_id=self.device_id, source='simulation', occurred_at=now.isoformat(),
                     origin=command.get('origin','remote'), experiment_id=self.experiment_id, unit_id=self.unit_id,
+                    treatment=command.get('treatment', self.treatment),
                     status=status, reason=reason, **metrics)
 
     def resync(self, now=None):
@@ -170,3 +184,145 @@ class DeviceSimulator:
         self.journal[str(command['command_id'])] = 'failed'
         self.save()
         return [self.event(command, occurred_at, 'failed', 'simulator_stopped', measurements_valid=False)]
+
+
+class MultiVesselSimulator(DeviceSimulator):
+    """Três contextos sintéticos, executor e instrumentação compartilhados.
+
+    Fila fica no backend; dispositivo rejeita sobreposição inclusive na estabilização.
+    """
+    def __init__(self, state_path=None, buffer_size=64, stabilization_s=.5):
+        super().__init__(state_path, buffer_size)
+        self.experiment_id = 'sim-three-pots'
+        self.units = {f'sim-pot-0{i}': dict(treatment=f'T{i}', soil_index=20+5*i,
+                       sensor_valid=True, flow_ml_s=6-i, power_w=3.5-.5*i,
+                       fallback_latched=False) for i in range(1,4)}
+        self.stabilization_s = stabilization_s
+        self.settling = None
+        self.refill_revision = 0
+        self.fallback_cursor = 0
+        if self.state_path and self.state_path.exists():
+            saved = json.loads(self.state_path.read_text())
+            self.units.update(saved.get('units', {}))
+            self.reservoir_ml = saved.get('reservoir_ml', self.reservoir_ml)
+            self.refill_revision = saved.get('refill_revision', 0)
+            self.fallback_cursor = saved.get('fallback_cursor', 0)
+            if saved.get('settling'):
+                self.settling = saved['settling']
+                self.settling['until'] = datetime.fromisoformat(self.settling['until'])
+
+    def save(self):
+        if not hasattr(self, 'units'):
+            return super().save()
+        if self.state_path:
+            self.state_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.state_path.with_suffix('.tmp')
+            settling = dict(self.settling, until=self.settling['until'].isoformat()) if self.settling else None
+            tmp.write_text(json.dumps(dict(journal=self.journal, buffer=list(self.buffer), dropped=self.dropped,
+                                          units=self.units, reservoir_ml=self.reservoir_ml,
+                                          refill_revision=self.refill_revision, fallback_cursor=self.fallback_cursor,
+                                          settling=settling)))
+            replace_state(tmp, self.state_path)
+
+    def select(self, unit_id):
+        state = self.units[unit_id]
+        self.unit_id, self.treatment = unit_id, state['treatment']
+        self.soil_index, self.sensor_valid = state['soil_index'], state['sensor_valid']
+        self.flow_ml_s, self.power_w = state['flow_ml_s'], state['power_w']
+        self.fallback_latched = state['fallback_latched']
+
+    def event(self, command, now, status, reason, **metrics):
+        result = super().event(command, now, status, reason, **metrics)
+        result.update(unit_id=command.get('unit_id', self.unit_id),
+                      experiment_id=command.get('experiment_id', self.experiment_id))
+        return result
+
+    def resync(self, now=None):
+        return False if self.settling else super().resync(now)
+
+    def receive(self, command, now, local=False):
+        unit = command.get('unit_id')
+        if unit not in self.units:
+            return [self.event(command, now, 'rejected', 'unknown_unit')]
+        if self.active or self.settling:
+            reason = 'duplicate' if str(command['command_id']) in self.journal else 'shared_executor_busy'
+            return [self.event(command, now, 'rejected', reason)]
+        self.select(unit)
+        events = super().receive(command, now, local)
+        if self.active:
+            self.active['refill_revision'] = self.refill_revision
+        return events
+
+    def tick(self, now):
+        if self.settling:
+            if now < self.settling['until']:
+                return []
+            event = self.settling['event']
+            persisted = next((item['payload'] for item in self.buffer if item['payload'].get('event_id') == event['event_id']), None)
+            if persisted:
+                event = persisted
+            else:
+                event['occurred_at'] = now.isoformat()
+            # Persistir no outbox antes de remover o resultado pendente de estabilização.
+            # Reinício entre retorno de tick e transporte não perde a confirmação.
+            if not persisted:
+                self.queue(f'irrigation/v1/{self.device_id}/events', event)
+            self.settling = None
+            self.save()
+            return [event]
+        if self.active:
+            self.select(self.active['command']['unit_id'])
+        events = super().tick(now)
+        if events and events[-1]['status'] in ('completed','failed'):
+            event = events[-1]
+            self.settling = dict(event=event, until=now+timedelta(seconds=self.stabilization_s))
+            self.save()
+            return []
+        return events
+
+    def refill(self, new_volume_ml, now):
+        if not 0 <= new_volume_ml <= 5000:
+            raise ValueError('Volume sintético inválido')
+        self.refill_revision += 1
+        event = None
+        if self.active:
+            command = self.active['command']
+            self.pump_on = False
+            self.active = None
+            self.journal[str(command['command_id'])] = 'failed'
+            event = self.event(command, now, 'failed', 'refill_during_cycle', measurements_valid=False)
+        elif self.settling:
+            event = dict(self.settling['event'], status='failed', reason='refill_during_settling',
+                         occurred_at=now.isoformat(), measurements_valid=False,
+                         volume_ml=None, energy_wh=None, duration_s=None)
+        self.settling = None
+        self.reservoir_ml = new_volume_ml
+        self.save()
+        return [event] if event else []
+
+    def fallback(self, now):
+        if self.active or self.settling or not self.fallback_enabled or self.remote_ready:
+            return []
+        ordered = list(self.units)
+        for offset in range(len(ordered)):
+            position = (self.fallback_cursor+offset) % len(ordered)
+            unit = ordered[position]
+            state = self.units[unit]
+            self.select(unit)
+            events = super().fallback(now)
+            state['fallback_latched'] = self.fallback_latched
+            if events:
+                self.fallback_cursor = (position+1) % len(ordered)
+                self.save()
+                return events
+        return []
+
+    def stop(self, now):
+        if self.settling:
+            event = dict(self.settling['event'], status='failed', reason='stopped_before_stabilization',
+                         occurred_at=now.isoformat(), measurements_valid=False,
+                         volume_ml=None, energy_wh=None, duration_s=None)
+            self.settling = None
+            self.save()
+            return [event]
+        return super().stop(now)

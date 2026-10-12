@@ -43,9 +43,18 @@ def validate_ca(pem):
         raise ValueError('CA PEM inválida ou vencida') from None
 
 def validate(settings, mode):
-    if set(settings)!=KEYS or any(not isinstance(v,str) for v in settings.values()):
+    unit_keys={'unit1','unit2','unit3'}
+    present=unit_keys & settings.keys()
+    if present and present != unit_keys:
+        raise ValueError('Forneça as três unidades')
+    allowed=KEYS | unit_keys if present else KEYS
+    required=KEYS-{'unit'} if present else KEYS
+    if not required <= settings.keys() or not settings.keys() <= allowed or any(not isinstance(v,str) for v in settings.values()):
         raise ValueError('Campos settings inválidos')
-    for key in ('device','experiment','unit'):
+    identity_keys=['device','experiment'] + (['unit1','unit2','unit3'] if present else ['unit'])
+    if present and (len({settings[k] for k in unit_keys})!=3 or ('unit' in settings and settings['unit']!=settings['unit1'])):
+        raise ValueError('Unidades duplicadas ou alias incompatível')
+    for key in identity_keys:
         if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,47}',settings[key]):
             raise ValueError('Identidade inválida')
     sim = settings['device'].startswith('sim-') and settings['experiment'].startswith('sim-')
@@ -119,7 +128,7 @@ def prepare(settings,output,idf_path=None,csv_only=False,size=None,mode="simulat
         writer=csv.writer(handle)
         writer.writerow(['key','type','encoding','value'])
         writer.writerow(['settings','namespace','',''])
-        for key in sorted(KEYS):
+        for key in sorted(settings):
             writer.writerow([key,'data','string',settings[key]])
     if not csv_only:
         if not idf_path:

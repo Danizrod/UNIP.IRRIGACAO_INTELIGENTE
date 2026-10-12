@@ -15,4 +15,6 @@ COPY tools/control_integration_check.py /app/control_integration_check.py
 COPY tools/ml_integration_check.py /app/ml_integration_check.py
 COPY tools/fallback_integration_check.py /app/fallback_integration_check.py
 COPY tools/automatic_integration_check.py /app/automatic_integration_check.py
+COPY tools/three_units_integration_check.py /app/three_units_integration_check.py
+COPY config /app/config
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
