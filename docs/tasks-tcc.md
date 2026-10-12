@@ -31,6 +31,10 @@ Entrega em **01/12/2026**. Ensaio planejado com um ESP32 e três vasos (um por t
 - [x] Implementar contratos, controle T1/T2/T3, comandos e confirmação em simulação.
 - [x] Verificar ciclo completo, duplicidade, rejeições, desconexão e contingência simulada.
 - [x] Preparar núcleo de segurança, MQTT/TLS e compilar firmware ESP-IDF padrão/simulado.
+- [x] Verificar retenção por expiração e persistência de eventos com falhas/reboot simulados; compilar firmware atualizado.
+- [x] Preparar provisionamento separado do histórico, sem flash automático; verificar gerador NVS e validações.
+- [ ] Validar cortes de energia, desgaste NVS e reconciliação de ciclos interrompidos no dispositivo real.
+- [ ] Conferir capacidade flash e redimensionar partição de aplicativo antes dos drivers/três vasos; build preparado ocupa quase 1 MiB.
 - [x] Registrar decisões, ciclos simulados, previsões e rejeições; atualizar painéis.
 - [ ] Implementar configuração/telemetria/modelo por vaso e fila global justa para três bombas sequenciais.
 - [ ] Validar medição compartilhada por ciclo e registro de reposições/intervenções.

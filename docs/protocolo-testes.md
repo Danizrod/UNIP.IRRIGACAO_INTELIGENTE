@@ -38,6 +38,8 @@ Pesar retirada não garante água entregue: verificar drenagem, vazamentos e var
 
 Grafana será a visualização central; não criar segunda interface. API/scripts continuam responsáveis por configuração/provisionamento, sem expor segredos no painel.
 
+Resultado principal: água retirada acumulada por vaso na janela válida comum, acompanhada obrigatoriamente da condição do solo. Menor consumo com solo fora da faixa não será classificado automaticamente como desempenho melhor. Energia, confiabilidade e erro preditivo são resultados complementares.
+
 - Por vaso/tratamento: água e energia acumuladas e diárias, quantidade/duração de ciclos, solo na faixa e fora dela, validade/cobertura de dados, erros/falhas e espera na fila.
 - Economia observada: `100 × (1 − consumo_Tx / consumo_T1)` na mesma janela com cobertura comparável; T1=0 gera resultado indefinido. Mostrar consumo bruto e ciclos sem medição válida; não apresentar economia completa quando consumo está ausente.
 - T3: MAE/RMSE contra observação válida de seis horas depois, pareada por vaso/calibração/modelo; avaliar teste temporal separado do treinamento. Mostrar quantidade de pares válidos e cobertura, sem erro fictício para alvos ausentes.

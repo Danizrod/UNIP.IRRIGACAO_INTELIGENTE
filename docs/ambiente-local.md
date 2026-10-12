@@ -55,4 +55,19 @@ Contrato em `backend/app/contracts.py`; decisões, previsões, comandos, eventos
 
 `docker compose --profile backup up -d backup` agenda dump diário enquanto Docker estiver ativo. Copiar para local adicional e configurar notebook definitivo. Backup no mesmo equipamento não protege contra sua perda.
 
-[Firmware](../firmware/README.md): compilação ESP-IDF e testes portáteis; drivers, pinagem e provisionamento físico pendentes. Buffer do firmware é volátil e limitado; journal de 128 IDs bloqueia quando cheio. Retenção para operação prolongada ainda precisa ser definida.
+[Firmware](../firmware/README.md): drivers, pinagem e provisionamento físico pendentes. Journal limitado reutiliza slots após expiração segura; relógio regressivo e falhas de armazenamento bloqueiam atuação. Eventos têm fila persistente separada de 32 registros; telemetria continua volátil. Validar NVS, desgaste e cortes de energia na placa. Um ciclo interrompido pode exigir reconciliação do estado no backend, sem inventar conclusão ou consumo.
+
+## Preparar provisionamento do ESP32
+
+`tools/provision-device.py` gera CSV/bin NVS privados usando o gerador oficial ESP-IDF; não grava dispositivo. Criar `.local/device-settings.json` com `device`, `experiment`, `unit`, `broker` (`mqtts://endereco-do-notebook:8883`), `username`, `ssid`, `ntp` e `ca_file` (caminho do certificado em `.local`). Senhas MQTT/Wi-Fi ausentes são solicitadas sem eco. Modo simulado exige identidades `sim-`; modo físico mantém drivers/atuação bloqueados.
+
+```powershell
+python tools/provision-device.py --settings .local/device-settings.json --output .local/provision-01 --mode simulation --csv-only
+# Em terminal ESP-IDF ativo, remover --csv-only para gerar settings.bin.
+```
+
+CSV/bin contêm segredos em texto claro; no Windows, chmod não configura ACL: manter `.local` privada, fora do Git e de pastas compartilhadas. O script preserva arquivos existentes. Manifesto registra tamanho/offset/hash da tabela e firmware disponível; isso não comprova firmware já instalado.
+
+Antes de mudar identidade ou contexto de um dispositivo já usado, drenar/reconciliar eventos pendentes com a configuração antiga. O script não migra histórico entre identidades. Ainda não há suporte operacional completo a três vasos no firmware/configuração; o provisionamento atual prepara uma unidade.
+
+Imagem destinada **somente à partição `provision`** de `firmware/partitions.csv`. Conferir capacidade real e atualizar tabela/firmware compatíveis antes de qualquer gravação manual. Não apagar nem sobrescrever `nvs`, `journal` ou `events`; eles guardam histórico que evita reexecução. Não há flash automático, gravação de eFuses ou alteração do broker. Revisar endereço do notebook, SAN do certificado do broker e CA confiável e ACL por dispositivo antes da conexão; provisionamento/flash ainda exigem ensaio na placa. Gerador oficial ESP-IDF 5.5.1 verificado com credenciais sintéticas: imagem de 65.536 bytes; seis testes unitários aprovados. [Gerador oficial NVS](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/api-reference/storage/nvs_partition_gen.html).

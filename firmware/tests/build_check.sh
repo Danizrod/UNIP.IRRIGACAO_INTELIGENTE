@@ -3,11 +3,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 g++ -std=c++17 -Wall -Wextra -Werror -Icore tests/safety_test.cpp -o /tmp/irrigation-safety-test
 /tmp/irrigation-safety-test
-idf.py reconfigure
+fresh_config=$(mktemp /tmp/irrigation-sdkconfig.XXXXXX)
+idf.py -D SDKCONFIG="$fresh_config" reconfigure
 idf.py build
 # Separate synthetic configuration, never change the default workspace configuration.
 simulation_dir=$(mktemp -d /tmp/irrigation-simulation.XXXXXX)
-cp CMakeLists.txt sdkconfig.defaults "$simulation_dir/"
+cp CMakeLists.txt sdkconfig.defaults partitions.csv "$simulation_dir/"
 cp -r main core "$simulation_dir/"
 printf '\nCONFIG_IRRIGATION_SIMULATION=y\n' >> "$simulation_dir/sdkconfig.defaults"
 cd "$simulation_dir"
