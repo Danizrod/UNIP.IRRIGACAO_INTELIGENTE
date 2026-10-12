@@ -8,6 +8,8 @@ Imagem gerada com imagegen a partir da lista de materiais: bancada com um ESP32,
 
 O MVP é um protótipo de bancada com **um ESP32, um vaso e uma bomba**, conectado a uma aplicação executada em notebook. Seu objetivo é demonstrar o ciclo completo de irrigação: medir, transmitir, prever, decidir, irrigar e registrar o resultado.
 
+Para o ensaio escolhido em 12/10/2026, conectar **três unidades vaso/sensor/bomba** ao mesmo ESP32, uma por T1/T2/T3. Compartilhar ambiente, reservatório e medidores, executando ciclos sequenciais identificados. Essa adaptação ainda não está implementada; detalhes e limites estatísticos estão no [protocolo](protocolo-testes.md). A imagem representa a unidade mínima, não a bancada inteira de três vasos.
+
 A entrega inclui montagem, software, calibração, testes e documentação técnica. Não inclui a criação do texto acadêmico.
 
 ## Componentes e responsabilidades
@@ -75,7 +77,7 @@ Treinamento depende de dados físicos preliminares suficientes. Dados simulados 
 
 O índice calibrado do sensor não será chamado de umidade volumétrica sem calibração apropriada. A pesagem mede retirada do reservatório, e a medição elétrica cobre o ramo da bomba. Chuva externa não molha o vaso coberto e deve ser tratada separadamente em simulação.
 
-Um vaso é suficiente para demonstrar este MVP. A comparação T1/T2/T3 por pelo menos 30 dias prevista no pré-projeto exige protocolo próprio, definido com o orientador. Economia superior a 20%, MAE inferior a três pontos e conformidade de 95% são metas a avaliar, não garantias do protótipo.
+Um vaso é suficiente para demonstrar este MVP. O protocolo operacional atual foi definido para três vasos, um por tratamento: comparação simultânea exploratória durante 30 dias, sem réplicas independentes por tratamento. Inferência sobre efeitos gerais permanece sem delineamento suficiente. Economia superior a 20%, MAE inferior a três pontos e conformidade de 95% são metas a avaliar, não garantias do protótipo.
 
 **Estado registrado em 12/10/2026:** fluxo de software, controles T1/T2/T3, ML, contingência e registros verificados em simulação. Firmware preparado sem drivers físicos; atuação física permanece bloqueada. Montagem, calibração, treinamento com dados reais e medições físicas ainda pendentes. Previsão estima solo observado sob a política coletada; não representa automaticamente um cenário sem irrigação.
 

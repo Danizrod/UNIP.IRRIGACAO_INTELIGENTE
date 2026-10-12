@@ -12,6 +12,7 @@ Ilustração conceitual; ligações elétricas e montagem da pesagem dependem do
 - [Materiais](docs/materiais-tcc.md): quantidades, funções e reaproveitamento.
 - [Tarefas](docs/tasks-tcc.md): checklist até a entrega prática.
 - [Ambiente local](docs/ambiente-local.md): execução, acesso e testes.
+- [Protocolo de testes](docs/protocolo-testes.md): tratamentos, medição compartilhada, métricas e calendário.
 - `docs/referencias/`: três documentos originais preservados.
 
 ## Escopo e estado
@@ -20,11 +21,11 @@ Arquitetura prática aprovada: ESP32/C++/ESP-IDF, MQTT/Mosquitto, Python/FastAPI
 
 Software verificado com dados simulados em 12/10/2026: ingestão, controle T1/T2/T3, confirmação de ciclos, contingência, treinamento/inferência, painéis e restauração de backup. Firmware ESP-IDF preparado com núcleo de segurança; drivers, montagem, calibração e validação física ainda pendentes. O estado dos serviços deve ser consultado com `docker compose ps`.
 
-Compra mínima proposta: **um ESP32 e um vaso**, sem reservas obrigatórias. Nenhum dos documentos originais fixa quantidade mínima de vasos. A seção 7.1 do pré-projeto menciona vasos genericamente; a seção 7.2 exige T1/T2/T3 e comparação por pelo menos 30 dias. A demonstração em um vaso não comprova automaticamente a avaliação estatística. Definir protocolo e réplicas com o orientador antes de ampliar a compra.
+Ensaio escolhido pelo usuário: **um ESP32 e três vasos**, um por T1/T2/T3, com bombas sequenciais e medidores compartilhados. Sem reservas obrigatórias. Um vaso demonstra a unidade mínima da imagem; três permitem comparação simultânea exploratória, com n=1 por tratamento e sem inferência generalizável garantida. A adaptação do software para três unidades ainda está pendente. Nenhum dos documentos originais fixa quantidade mínima de vasos.
 
 Orçamento e modelos dos componentes ainda não definidos. Fonte, acionamento e pinagem dependem das peças reais. Cultura sugerida: alface em vaso de cerca de 3 litros; confirmar condições de bancada e calibração.
 
-Janela proposta para comparação: 28/10 a 27/11, com análise até 30/11. Depende de aquisição, calibração e dados úteis; replanejar se não for viável. Metas de economia >20%, MAE <3 pontos e conformidade ≥95% são expectativas, não resultados garantidos.
+Planejamento atual: bancada e modelo prontos até 31/10; comparação de 01/11 00:00 a 01/12 00:00 (São Paulo), com análise incremental durante novembro. Entrega em 01/12 deixa poucas horas após os 30 dias completos. Depende de aquisição, calibração e dados úteis; replanejar se não for viável. Metas de economia >20%, MAE <3 pontos e conformidade ≥95% são expectativas, não resultados garantidos. Grafana será a visualização central; painéis experimentais/intervenções ainda pendentes.
 
 ## Estrutura
 

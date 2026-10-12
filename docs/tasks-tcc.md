@@ -1,6 +1,6 @@
 # Etapas da entrega prática
 
-Entrega em **01/12/2026**. MVP com um ESP32 e um vaso. Texto acadêmico fora do escopo. Itens marcados correspondem ao trabalho já verificado.
+Entrega em **01/12/2026**. Ensaio planejado com um ESP32 e três vasos (um por tratamento, sem réplicas); unidade mínima demonstrável com um vaso. Texto acadêmico fora do escopo. Itens marcados correspondem ao trabalho já verificado.
 
 ## Planejamento e aquisição
 
@@ -9,7 +9,8 @@ Entrega em **01/12/2026**. MVP com um ESP32 e um vaso. Texto acadêmico fora do 
 - [ ] Definir orçamento, peças disponíveis e componentes a comprar.
 - [ ] Conferir anúncios e dimensionar fonte, acionamento e conexões.
 - [ ] Definir local, substrato, planta e responsável pela inspeção diária.
-- [ ] Definir com orientador protocolo, tratamentos e réplicas antes de ampliar a compra.
+- [x] Definir protocolo operacional econômico e registrar limite estatístico de n=1 por tratamento.
+- [ ] Resolver delineamento se for exigida inferência estatística generalizável; três vasos fixos não fornecem réplicas.
 - [ ] Comprar e receber os materiais.
 
 ## Ambiente e montagem
@@ -31,6 +32,9 @@ Entrega em **01/12/2026**. MVP com um ESP32 e um vaso. Texto acadêmico fora do 
 - [x] Verificar ciclo completo, duplicidade, rejeições, desconexão e contingência simulada.
 - [x] Preparar núcleo de segurança, MQTT/TLS e compilar firmware ESP-IDF padrão/simulado.
 - [x] Registrar decisões, ciclos simulados, previsões e rejeições; atualizar painéis.
+- [ ] Implementar configuração/telemetria/modelo por vaso e fila global justa para três bombas sequenciais.
+- [ ] Validar medição compartilhada por ciclo e registro de reposições/intervenções.
+- [ ] Consolidar Grafana com resultados por tratamento, qualidade/cobertura, ciclos locais, falhas e intervenções.
 
 Os itens seguintes exigem integração/validação com os componentes físicos:
 
@@ -71,8 +75,8 @@ Os itens seguintes dependem de dados físicos e do protocolo:
 
 ## Marcos propostos
 
-- [ ] Coleta inicial por volta de **20/10** e viabilidade do modelo até **27/10**.
-- [ ] Comparação de **28/10 a 27/11**, com 30 dias completos.
-- [ ] Análise/revisão técnica até **30/11**; entrega em **01/12**.
+- [ ] Coleta piloto, calibração, modelo e bancada prontos até **31/10**.
+- [ ] Comparação de **01/11 00:00 a 01/12 00:00**, com 30 dias completos (São Paulo).
+- [ ] Análise incremental em novembro e fechamento/entrega em **01/12**.
 
 Datas condicionadas à aquisição, calibração e dados suficientes. Um vaso demonstra o MVP, mas não comprova automaticamente a comparação estatística. Não tratar leituras sucessivas como réplicas nem abreviar os 30 dias; replanejar com o orientador se necessário. Metas de desempenho são expectativas a testar.
