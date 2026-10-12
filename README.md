@@ -2,6 +2,10 @@
 
 Execução prática de um protótipo de baixo custo com ESP32, sensores, controle de bomba e aprendizado de máquina. Entrega em **01/12/2026**. Redação acadêmica fora do escopo.
 
+![Montagem conceitual do MVP com um ESP32 e um vaso](docs/imagens/montagem-conceitual-mvp.png)
+
+Ilustração conceitual; ligações elétricas e montagem da pesagem dependem dos componentes e da calibração.
+
 ## Documentação
 
 - [MVP](docs/mvp.md): definição, funcionamento e critérios de demonstração.

@@ -4,7 +4,7 @@
 
 ![Montagem conceitual do protótipo](imagens/montagem-conceitual-mvp.png)
 
-Imagem gerada com imagegen a partir da lista de materiais: bancada com um ESP32, um vaso, reservatório pesado, sensores, acionamento e notebook; instrumentos de apoio e expansão opcional separados. É uma visualização conceitual, não esquema elétrico ou desenho mecânico validado. Cabo USB de dados liga notebook e ESP32; conferir essa ligação na montagem. A plataforma real deve transmitir o peso pela célula, sem apoios paralelos ou tração de fios/mangueiras que desviem a carga. Pinagem e componentes de potência dependem das peças escolhidas.
+Imagem gerada com imagegen a partir da lista de materiais: bancada com um ESP32, um vaso, reservatório pesado, sensores, acionamento e notebook. É uma visualização conceitual, não esquema elétrico ou desenho mecânico validado. Cabo USB de dados liga notebook e ESP32; conferir essa ligação na montagem. A plataforma real deve transmitir o peso pela célula, sem apoios paralelos ou tração de fios/mangueiras que desviem a carga. Pinagem e componentes de potência dependem das peças escolhidas.
 
 O MVP é um protótipo de bancada com **um ESP32, um vaso e uma bomba**, conectado a uma aplicação executada em notebook. Seu objetivo é demonstrar o ciclo completo de irrigação: medir, transmitir, prever, decidir, irrigar e registrar o resultado.
 
