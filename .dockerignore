@@ -1,0 +1,9 @@
+.git
+.env
+.local
+docs
+data
+models
+firmware
+**/__pycache__
+**/.venv

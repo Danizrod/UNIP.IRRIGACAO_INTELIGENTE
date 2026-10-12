@@ -1,0 +1,91 @@
+name: tcc-irrigacao
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: irrigation
+      POSTGRES_USER: irrigation
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?execute bootstrap}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?execute bootstrap}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U irrigation -d irrigation']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  mosquitto:
+    image: eclipse-mosquitto:2
+    entrypoint: [sh, /mosquitto/config/entrypoint.sh]
+    environment:
+      MQTT_BACKEND_PASSWORD: ${MQTT_BACKEND_PASSWORD:?execute bootstrap}
+      MQTT_SIM_PASSWORD: ${MQTT_SIM_PASSWORD:?execute bootstrap}
+    ports: ['127.0.0.1:8883:8883']
+    volumes:
+      - ./infra/mosquitto:/mosquitto/config:ro
+      - ./.local/certs:/certs:ro
+      - mqttdata:/mosquitto/data
+    restart: unless-stopped
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: tcc-irrigacao-backend:local
+    environment: &app_environment
+      DATABASE_URL: postgresql://irrigation:${POSTGRES_PASSWORD}@postgres:5432/irrigation
+      API_TOKEN: ${API_TOKEN:?execute bootstrap}
+      MQTT_BACKEND_PASSWORD: ${MQTT_BACKEND_PASSWORD}
+      MQTT_SIM_PASSWORD: ${MQTT_SIM_PASSWORD}
+      MQTT_HOST: mosquitto
+    ports: ['127.0.0.1:8000:8000']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://localhost:8000/health")']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  ingestion:
+    image: tcc-irrigacao-backend:local
+    pull_policy: never
+    command: [python, -m, app.worker]
+    environment: *app_environment
+    volumes: ['./.local/certs/ca.crt:/certs/ca.crt:ro']
+    depends_on:
+      backend:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+  grafana:
+    image: grafana/grafana:12.2.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?execute bootstrap}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD}
+    ports: ['127.0.0.1:3000:3000']
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+  simulator:
+    image: tcc-irrigacao-backend:local
+    pull_policy: never
+    profiles: [simulation]
+    command: [python, simulate.py]
+    environment: *app_environment
+    volumes: ['./.local/certs/ca.crt:/certs/ca.crt:ro']
+    depends_on:
+      ingestion:
+        condition: service_started
+volumes:
+  pgdata:
+  mqttdata:
+  grafanadata:
