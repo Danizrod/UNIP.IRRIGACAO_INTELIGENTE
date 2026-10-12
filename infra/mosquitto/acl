@@ -1,5 +1,9 @@
 user backend
 topic read irrigation/v1/+/telemetry
+topic read irrigation/v1/+/events
+topic write irrigation/v1/sim-01/commands
 
 user sim-01
 topic write irrigation/v1/sim-01/telemetry
+topic write irrigation/v1/sim-01/events
+topic read irrigation/v1/sim-01/commands

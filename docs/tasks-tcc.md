@@ -18,13 +18,21 @@ Entrega em **01/12/2026**. MVP com um ESP32 e um vaso. Texto acadêmico fora do 
 - [x] Verificar ingestão e persistência com dados simulados.
 - [ ] Preparar notebook definitivo, ESP-IDF, identidade do dispositivo e acesso pela rede.
 - [x] Implementar backup e verificar restauração em banco temporário isolado.
-- [ ] Agendar backup diário e cópia adicional no notebook definitivo.
+- [x] Preparar serviço de backup diário enquanto Docker estiver ativo.
+- [ ] Configurar backup e cópia adicional no notebook definitivo.
 - [ ] Definir pinagem e montar circuito elétrico, hidráulico e plataforma de pesagem.
 - [ ] Calibrar solo, pesagem e medição elétrica; registrar método e erro.
 - [ ] Medir vazão/água entregue e testar vazamento, sifonamento e estabilidade.
 - [ ] Definir faixa de umidade e limites de duração, volume e intervalo.
 
 ## Firmware e controle
+
+- [x] Implementar contratos, controle T1/T2/T3, comandos e confirmação em simulação.
+- [x] Verificar ciclo completo, duplicidade, rejeições, desconexão e contingência simulada.
+- [x] Preparar núcleo de segurança, MQTT/TLS e compilar firmware ESP-IDF padrão/simulado.
+- [x] Registrar decisões, ciclos simulados, previsões e rejeições; atualizar painéis.
+
+Os itens seguintes exigem integração/validação com os componentes físicos:
 
 - [ ] Implementar sensores e telemetria com identificação, calibração e horário.
 - [ ] Implementar comandos, validade, deduplicação e confirmação de execução.
@@ -35,6 +43,12 @@ Entrega em **01/12/2026**. MVP com um ESP32 e um vaso. Texto acadêmico fora do 
 - [ ] Testar ciclo completo, desconexão, reinicialização, leituras inválidas e comandos rejeitados.
 
 ## Dados e aprendizado de máquina
+
+- [x] Implementar exportação, alvo de seis horas e separação temporal com expurgo.
+- [x] Implementar comparação de três algoritmos/persistência e modelo JSON versionado.
+- [x] Verificar treinamento, inferência e decisão T3 com dados sintéticos separados.
+
+Os itens seguintes dependem de dados físicos e do protocolo:
 
 - [ ] Coletar dados físicos preliminares e registrar intervenções/reposições.
 - [ ] Definir atributos, alvo de seis horas e uso de meteorologia aplicável à bancada.

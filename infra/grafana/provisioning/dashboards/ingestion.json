@@ -1,18 +1,187 @@
 {
   "uid": "tcc-ingestion",
-  "title": "TCC — integração de telemetria",
+  "title": "TCC — telemetria e ciclos",
   "description": "Base de integração. simulation contém fixtures de transporte, sem dinâmica agronômica. Selecionar fonte e experimento explicitamente.",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "10s",
-  "time": {"from": "now-1h", "to": "now"},
-  "templating": {"list": [
-    {"name": "source", "label": "Origem dos dados", "type": "custom", "query": "simulation,physical", "current": {"text": "simulation", "value": "simulation"}, "options": [{"text": "simulation", "value": "simulation", "selected": true}, {"text": "physical", "value": "physical", "selected": false}]},
-    {"name": "experiment", "label": "Experimento", "type": "query", "datasource": {"type": "postgres", "uid": "irrigation-postgres"}, "query": "SELECT DISTINCT experiment_id AS __text, experiment_id AS __value FROM telemetry WHERE source = ${source:sqlstring} ORDER BY 1", "refresh": 1, "current": {"text": "sim-integration", "value": "sim-integration"}}
-  ]},
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "source",
+        "label": "Origem dos dados",
+        "type": "custom",
+        "query": "simulation,physical",
+        "current": {
+          "text": "simulation",
+          "value": "simulation"
+        },
+        "options": [
+          {
+            "text": "simulation",
+            "value": "simulation",
+            "selected": true
+          },
+          {
+            "text": "physical",
+            "value": "physical",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "name": "experiment",
+        "label": "Experimento",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "irrigation-postgres"
+        },
+        "query": "SELECT DISTINCT experiment_id AS __text, experiment_id AS __value FROM telemetry WHERE source = ${source:sqlstring} ORDER BY 1",
+        "refresh": 1,
+        "current": {
+          "text": "sim-integration",
+          "value": "sim-integration"
+        }
+      }
+    ]
+  },
   "panels": [
-    {"id": 1, "type": "text", "title": "Identificação", "gridPos": {"x": 0, "y": 0, "w": 24, "h": 3}, "options": {"mode": "markdown", "content": "Origem selecionada: **$source**. Experimento: **$experiment**. Dados simulation são fixtures de transporte; não representam ensaio físico ou desempenho de ML."}},
-    {"id": 2, "type": "timeseries", "title": "Índice relativo calibrado do solo", "gridPos": {"x": 0, "y": 3, "w": 16, "h": 9}, "datasource": {"type": "postgres", "uid": "irrigation-postgres"}, "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT collected_at AS time, soil_index AS value, device_id AS metric FROM telemetry WHERE source = ${source:sqlstring} AND experiment_id = ${experiment:sqlstring} AND sensor_valid AND $__timeFilter(collected_at) ORDER BY collected_at"}], "fieldConfig": {"defaults": {"min": 0, "max": 100}, "overrides": []}},
-    {"id": 3, "type": "stat", "title": "Mensagens únicas persistidas na janela", "gridPos": {"x": 16, "y": 3, "w": 8, "h": 9}, "datasource": {"type": "postgres", "uid": "irrigation-postgres"}, "targets": [{"refId": "A", "format": "table", "rawSql": "SELECT count(*) AS messages FROM telemetry WHERE source = ${source:sqlstring} AND experiment_id = ${experiment:sqlstring} AND $__timeFilter(collected_at)"}]}
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Identificação",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Origem selecionada: **$source**. Experimento: **$experiment**. Dados simulation são fixtures de transporte; não representam ensaio físico ou desempenho de ML."
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Índice relativo calibrado do solo",
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 16,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "irrigation-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT collected_at AS time, soil_index AS value, device_id AS metric FROM telemetry WHERE source = ${source:sqlstring} AND experiment_id = ${experiment:sqlstring} AND sensor_valid AND $__timeFilter(collected_at) ORDER BY collected_at"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Mensagens únicas persistidas na janela",
+      "gridPos": {
+        "x": 16,
+        "y": 3,
+        "w": 8,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "irrigation-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS messages FROM telemetry WHERE source = ${source:sqlstring} AND experiment_id = ${experiment:sqlstring} AND $__timeFilter(collected_at)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Comandos e confirmações",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "irrigation-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT c.issued_at, c.payload->>'unit_id' AS vaso, c.payload->>'treatment' AS tratamento, c.status, c.payload->>'reason' AS motivo, c.command_id FROM commands c WHERE c.source = ${source:sqlstring} AND c.payload->>'experiment_id' = ${experiment:sqlstring} AND $__timeFilter(c.issued_at) ORDER BY c.issued_at DESC LIMIT 100"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Água retirada e energia por ciclo confirmado",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "irrigation-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT e.occurred_at, c.payload->>'unit_id' AS vaso, e.payload->>'volume_ml' AS agua_ml, e.payload->>'energy_wh' AS energia_wh, e.payload->>'measurements_valid' AS medicao_valida, e.payload->>'reason' AS motivo FROM command_events e JOIN commands c USING(command_id) WHERE c.source = ${source:sqlstring} AND c.payload->>'experiment_id' = ${experiment:sqlstring} AND e.status IN ('completed','failed') AND $__timeFilter(e.occurred_at) ORDER BY e.occurred_at DESC LIMIT 100"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Decisões e uso do modelo",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "irrigation-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT d.created_at, d.payload->>'reason' AS motivo, d.payload->>'actuate' AS irrigar, d.payload->>'prediction_id' AS previsao, d.payload->>'command_id' AS comando FROM decisions d JOIN telemetry t ON t.device_id=d.device_id AND t.message_id=(d.payload->>'telemetry_message_id')::uuid WHERE t.source = ${source:sqlstring} AND t.experiment_id = ${experiment:sqlstring} AND $__timeFilter(d.created_at) ORDER BY d.created_at DESC LIMIT 100"
+        }
+      ]
+    }
   ]
 }

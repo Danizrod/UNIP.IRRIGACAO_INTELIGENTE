@@ -73,6 +73,6 @@ O índice calibrado do sensor não será chamado de umidade volumétrica sem cal
 
 Um vaso é suficiente para demonstrar este MVP. A comparação T1/T2/T3 por pelo menos 30 dias prevista no pré-projeto exige protocolo próprio, definido com o orientador. Economia superior a 20%, MAE inferior a três pontos e conformidade de 95% são metas a avaliar, não garantias do protótipo.
 
-**Estado registrado em 12/10/2026:** base de ingestão, MQTT/TLS, PostgreSQL e Grafana verificada com dados simulados. Montagem, firmware, controle físico, ML e medições reais ainda pendentes. Este documento descreve o funcionamento esperado, não funcionalidades integralmente concluídas.
+**Estado registrado em 12/10/2026:** fluxo de software, controles T1/T2/T3, ML, contingência e registros verificados em simulação. Firmware preparado sem drivers físicos; atuação física permanece bloqueada. Montagem, calibração, treinamento com dados reais e medições físicas ainda pendentes. Previsão estima solo observado sob a política coletada; não representa automaticamente um cenário sem irrigação.
 
 Documentos relacionados: [materiais](materiais-tcc.md), [tarefas](tasks-tcc.md) e [ambiente local](ambiente-local.md).

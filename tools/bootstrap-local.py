@@ -15,7 +15,7 @@ certs = root / '.local/certs'
 if env.exists() or certs.exists():
     raise SystemExit('Configuração já existe; preservada. Não executar bootstrap novamente.')
 certs.mkdir(parents=True)
-names = ['POSTGRES_PASSWORD', 'GRAFANA_DB_PASSWORD', 'MQTT_BACKEND_PASSWORD',
+names = ['POSTGRES_PASSWORD', 'APP_DATABASE_PASSWORD', 'GRAFANA_DB_PASSWORD', 'MQTT_BACKEND_PASSWORD',
          'MQTT_SIM_PASSWORD', 'API_TOKEN', 'GRAFANA_ADMIN_PASSWORD']
 env.write_text(''.join(f'{name}={secrets.token_hex(24)}\n' for name in names), encoding='utf-8')
 now = datetime.now(timezone.utc)

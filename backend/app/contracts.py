@@ -42,3 +42,111 @@ class Telemetry(BaseModel):
         if self.source == 'physical' and self.device_id.startswith('sim-'):
             raise ValueError('dispositivo simulado não pode produzir dado físico')
         return self
+
+class StrictContract(BaseModel):
+    model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+
+
+class IrrigationCommand(StrictContract):
+    schema_version: Literal[1] = 1
+    command_id: UUID
+    decision_id: UUID | None = None
+    device_id: str = Field(pattern=r'^[a-z0-9][a-z0-9-]{0,47}$')
+    experiment_id: str = Field(pattern=r'^[a-z0-9][a-z0-9-]{0,47}$')
+    unit_id: str = Field(pattern=r'^[a-z0-9][a-z0-9-]{0,47}$')
+    treatment: Literal['T1', 'T2', 'T3']
+    source: Literal['simulation', 'physical']
+    issued_at: AwareDatetime
+    expires_at: AwareDatetime
+    target_volume_ml: float = Field(gt=0)
+    max_duration_s: float = Field(gt=0, le=300)
+    reason: str = Field(min_length=1, max_length=300)
+    model_version: str | None = Field(default=None, max_length=100)
+
+    @model_validator(mode='after')
+    def consistency(self):
+        if not timedelta(0) < self.expires_at - self.issued_at <= timedelta(minutes=5):
+            raise ValueError('validade deve estar entre zero e cinco minutos')
+        if self.source == 'simulation' and not (self.device_id.startswith('sim-') and self.experiment_id.startswith('sim-')):
+            raise ValueError('simulação exige prefixos sim-')
+        if self.source == 'physical' and (self.device_id.startswith('sim-') or self.experiment_id.startswith('sim-')):
+            raise ValueError('prefixo sim- não pode atuar em fonte física')
+        return self
+
+
+class CommandEvent(StrictContract):
+    origin: Literal['remote', 'local'] = 'remote'
+    experiment_id: str | None = None
+    unit_id: str | None = None
+    schema_version: Literal[1] = 1
+    event_id: UUID
+    command_id: UUID
+    device_id: str = Field(pattern=r'^[a-z0-9][a-z0-9-]{0,47}$')
+    source: Literal['simulation', 'physical']
+    occurred_at: AwareDatetime
+    status: Literal['accepted', 'rejected', 'started', 'completed', 'failed']
+    reason: str = Field(min_length=1, max_length=300)
+    duration_s: float | None = Field(default=None, ge=0)
+    volume_ml: float | None = Field(default=None, ge=0)
+    energy_wh: float | None = Field(default=None, ge=0)
+    measurements_valid: bool = False
+
+    @model_validator(mode='after')
+    def consistency(self):
+        if self.occurred_at > datetime.now(timezone.utc) + timedelta(minutes=5):
+            raise ValueError('evento no futuro')
+        if self.origin == 'local' and (self.source != 'simulation' or not self.device_id.startswith('sim-') or not self.experiment_id or not self.experiment_id.startswith('sim-') or not self.unit_id):
+            raise ValueError('ciclo local exige simulação e contexto explícito')
+        if not self.measurements_valid and (self.volume_ml is not None or self.energy_wh is not None):
+            raise ValueError('medições inválidas devem ser null')
+        return self
+
+
+ExecutionEvent = CommandEvent
+
+
+class Prediction(StrictContract):
+    prediction_id: UUID
+    device_id: str
+    telemetry_message_id: UUID
+    source: Literal['simulation', 'physical']
+    predicted_at: AwareDatetime
+    valid_until: AwareDatetime
+    horizon_s: Literal[21600] = 21600
+    soil_index: float = Field(ge=0, le=100)
+    model_version: str = Field(min_length=1, max_length=100)
+
+    @model_validator(mode='after')
+    def consistency(self):
+        if self.valid_until <= self.predicted_at or self.valid_until - self.predicted_at > timedelta(hours=6):
+            raise ValueError('validade da previsão fora dos limites')
+        if self.predicted_at > datetime.now(timezone.utc) + timedelta(minutes=5):
+            raise ValueError('previsão no futuro')
+        return self
+
+
+class DecisionConfiguration(StrictContract):
+    device_id: str = Field(pattern=r'^[a-z0-9][a-z0-9-]{0,47}$')
+    experiment_id: str
+    unit_id: str
+    treatment: Literal['T1', 'T2', 'T3']
+    source: Literal['simulation', 'physical']
+    enabled: bool = False
+    calibration_id: str = Field(min_length=1)
+    soil_low: float = Field(ge=0, le=100)
+    soil_high: float = Field(ge=0, le=100)
+    min_reservoir_mass_g: float = Field(ge=0, description='Massa mínima na mesma referência/tara da telemetria; definida por calibração incluindo reserva para não operar a seco')
+    target_volume_ml: float = Field(gt=0)
+    max_duration_s: float = Field(gt=0, le=300)
+    max_telemetry_age_s: int = Field(gt=0, le=3600)
+    cooldown_s: int = Field(gt=0)
+    schedule_interval_s: int | None = Field(default=None, gt=0)
+    prediction_fallback_enabled: bool = False
+
+    @model_validator(mode='after')
+    def consistency(self):
+        if self.soil_low >= self.soil_high:
+            raise ValueError('histerese exige low < high')
+        if self.treatment == 'T1' and self.schedule_interval_s is None:
+            raise ValueError('T1 exige intervalo')
+        return self

@@ -1,46 +1,58 @@
 # Ambiente local
 
-Base de integração verificada com dados simulados em 12/10/2026. Ainda não controla bombas nem executa ML.
+Software verificado em simulação em 12/10/2026. Atuação física bloqueada até montagem e calibração.
 
-## Executar e testar
+## Preparar e executar
 
-Na raiz do projeto, com Docker Desktop ativo:
+Docker Desktop ativo e Python com `cryptography` para configuração inicial:
 
 ```powershell
+python tools/bootstrap-local.py
 docker compose up -d --build
 docker compose ps
-docker compose exec -T backend python -m unittest discover -s tests -v
-docker compose --profile simulation run --rm simulator python integration_check.py
-docker compose logs --tail 30 ingestion
-docker compose stop
 ```
 
-Os testes gravam dados identificados como simulados. Foram verificados validação, autenticação, duplicidade, conflito, persistência MQTT/TLS, reinicialização do broker e consulta do Grafana. Não são testes físicos.
+Credenciais em `.env`, certificados em `.local/certs`, dados/modelos locais fora do Git. Configuração inicial preserva arquivos existentes; instalações antigas precisam incluir `APP_DATABASE_PASSWORD` no `.env`. Migrações executam antes da API. Aplicação usa papel restrito; Grafana somente leitura. Dependências e imagens estão fixadas.
 
-## Acessos
-
-| Serviço | Endereço ou acesso |
+| Serviço | Acesso |
 | --- | --- |
-| API/Swagger | http://127.0.0.1:8000/docs — Bearer com API_TOKEN |
-| Prontidão | http://127.0.0.1:8000/health |
-| Grafana | http://127.0.0.1:3000/d/tcc-ingestion — admin e GRAFANA_ADMIN_PASSWORD |
-| MQTT | localhost:8883, TLS, autenticação e ACL |
-| PostgreSQL | Apenas rede Docker, sem porta publicada |
+| API | http://127.0.0.1:8000/docs — Bearer API_TOKEN |
+| Grafana | http://127.0.0.1:3000/d/tcc-ingestion — admin/GRAFANA_ADMIN_PASSWORD |
+| MQTT | localhost:8883 — TLS, autenticação e ACL por dispositivo |
+| PostgreSQL | Rede Docker, sem porta publicada |
 
-Credenciais em `.env`; certificados em `.local/certs`. Ambos fora do Git. Não remover volumes para reiniciar: contêm os dados. Backup e restauração ainda devem ser preparados.
+Para o ESP32 real, provisionar identidade, ACL e certificado para o endereço do notebook. Não desabilitar TLS. Não remover volumes para reiniciar.
 
-## Backup
+## Verificar software
 
-Com Python 3 disponível no notebook, executar `python tools/backup.py backup-and-verify`. O script cria um dump consistente e um manifesto SHA-256 em `.local/backups/`, restaura em banco temporário isolado e verifica as tabelas. O banco de trabalho não é substituído. Para verificar um dump existente: `python tools/backup.py verify CAMINHO.dump`.
+```powershell
+docker compose exec -T backend python -m unittest discover -s tests -v
+docker compose --profile simulation run --rm simulator python integration_check.py
+docker compose --profile simulation run --rm simulator python control_integration_check.py
+docker compose --profile simulation run --rm simulator python automatic_integration_check.py
+docker compose --profile simulation run --rm simulator python fallback_integration_check.py
+```
 
-Restauração isolada verificada em 12/10/2026. Copiar backups para um local adicional antes do experimento; a cópia no mesmo notebook não protege contra perda do equipamento. O agendamento diário ainda deve ser configurado no notebook definitivo.
+Verificados 26 testes unitários e cinco testes adicionais de banco em esquema isolado, além de integrações MQTT/TLS, ACL, duplicidade, expiração, rejeições persistidas, decisões, ciclos e desconexão/retomada. Os cinco testes de banco exigem `TEST_DATABASE_URL` e são ignorados no comando padrão. Simulação usa exclusivamente identidade `sim-01` e origem `simulation`; testes de integração devem executar sequencialmente.
 
-## Configuração e dados
+## Simulação e ML
 
-Python 3.12 no container; dependências fixadas em backend/requirements.lock.txt. Imagens da infraestrutura ainda usam tags; congelar antes do experimento. Em configuração nova, tools/bootstrap-local.py exige Python/cryptography, gera credenciais/certificados e preserva configurações existentes. Scripts SQL de inicialização só executam em volume vazio; mudanças posteriores exigem migração.
+```powershell
+docker compose --profile simulation run --rm simulator python tools/ml_fixture.py /data/raw/sim-ml-fixture.csv
+docker compose --profile simulation run --rm simulator python -m app.ml /data/raw/sim-ml-fixture.csv /models/active.json --source simulation --allow-simulation
+docker compose --profile simulation run --rm simulator python ml_integration_check.py
+```
 
-Para ESP32 pela rede local, configurar identidade/ACL, endereço do notebook e certificado correspondente. Os acessos atuais ficam restritos a localhost; não desabilitar validação TLS. Separar usuário da aplicação com permissões mínimas antes da operação física; Grafana já usa usuário somente de leitura.
+Pipeline compara Ridge, Random Forest, Gradient Boosting e persistência. Separação temporal com expurgo dos alvos de seis horas; modelo JSON versionado, sem carregar pickle. Dados sintéticos verificam integração, não desempenho agronômico. Treinamento físico exige dados preliminares, calibração consistente e revisão antes de aprovação. Alvo é solo observado sob a política coletada, não previsão contrafactual sem irrigação.
 
-Contrato: backend/app/contracts.py. Tópico: `irrigation/v1/<device_id>/telemetry`. Identificar dispositivo, vaso, experimento, tratamento, origem e calibração; registrar horário de coleta e recebimento. Deduplicação por dispositivo/message_id. Índice de solo é relativo; ausência de leitura não é zero. Rejeições MQTT atualmente ficam em log; registro durável ainda pendente.
+Para demonstração contínua: `docker compose --profile simulation run --rm simulator python simulate.py --loop --seconds 120 --state /state/device.json --treatment T2`. Configurar `/control/config` pela API com limites explícitos **simulados**. Serviço opcional `docker compose --profile control up -d controller` avalia novas leituras; configuração desabilitada por padrão. Desligar após demonstração com `docker compose --profile control stop controller`.
 
-Filtrar sempre origem e experimento. Fixtures sim-* não entram na análise física ou treinamento real. Buffer, confirmação de atuação e fallback no ESP32 ainda não foram implementados.
+Contrato em `backend/app/contracts.py`; decisões, previsões, comandos, eventos remotos/locais e rejeições ficam registrados. PUBACK não comprova atuação. Medições inválidas são null, não zero. Separar sempre origem/experimento nas consultas.
+
+## Backup e firmware
+
+`python tools/backup.py backup-and-verify` cria dump, manifesto SHA-256 e testa restauração em banco temporário isolado. `python tools/backup.py verify CAMINHO.dump` verifica arquivo existente. Restauração testada; banco de trabalho preservado.
+
+`docker compose --profile backup up -d backup` agenda dump diário enquanto Docker estiver ativo. Copiar para local adicional e configurar notebook definitivo. Backup no mesmo equipamento não protege contra sua perda.
+
+[Firmware](../firmware/README.md): compilação ESP-IDF e testes portáteis; drivers, pinagem e provisionamento físico pendentes. Buffer do firmware é volátil e limitado; journal de 128 IDs bloqueia quando cheio. Retenção para operação prolongada ainda precisa ser definida.

@@ -14,7 +14,7 @@ Execução prática de um protótipo de baixo custo com ESP32, sensores, control
 
 Arquitetura prática aprovada: ESP32/C++/ESP-IDF, MQTT/Mosquitto, Python/FastAPI, PostgreSQL, Grafana, pesagem com célula/HX711, medição de energia com INA219/INA226 e acionamento por MOSFET. Treinamento separado da inferência; decisão determinística e proteções locais no ESP32.
 
-Base de ingestão verificada com dados simulados em 12/10/2026. Firmware, montagem, controle físico, ML e coleta real ainda pendentes. O estado dos serviços deve ser consultado com `docker compose ps`.
+Software verificado com dados simulados em 12/10/2026: ingestão, controle T1/T2/T3, confirmação de ciclos, contingência, treinamento/inferência, painéis e restauração de backup. Firmware ESP-IDF preparado com núcleo de segurança; drivers, montagem, calibração e validação física ainda pendentes. O estado dos serviços deve ser consultado com `docker compose ps`.
 
 Compra mínima proposta: **um ESP32 e um vaso**, sem reservas obrigatórias. Nenhum dos documentos originais fixa quantidade mínima de vasos. A seção 7.1 do pré-projeto menciona vasos genericamente; a seção 7.2 exige T1/T2/T3 e comparação por pelo menos 30 dias. A demonstração em um vaso não comprova automaticamente a avaliação estatística. Definir protocolo e réplicas com o orientador antes de ampliar a compra.
 
