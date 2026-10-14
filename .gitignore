@@ -18,3 +18,5 @@ tmp/
 .archify/**/*.finalize-summary.json
 .archify/**/*.browser-check.json
 .archify/**/.archify-*
+.archify/**/visual-check/
+.archify/**/review-*/

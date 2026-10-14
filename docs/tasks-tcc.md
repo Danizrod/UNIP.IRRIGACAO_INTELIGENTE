@@ -85,4 +85,4 @@ Os itens seguintes dependem de dados físicos e do protocolo:
 - [ ] Comparação de **01/11 00:00 a 01/12 00:00**, com 30 dias completos (São Paulo).
 - [ ] Análise incremental em novembro e fechamento/entrega em **01/12**.
 
-Datas condicionadas à aquisição, calibração e dados suficientes. Um vaso demonstra o MVP, mas não comprova automaticamente a comparação estatística. Não tratar leituras sucessivas como réplicas nem abreviar os 30 dias; replanejar com o orientador se necessário. Metas de desempenho são expectativas a testar.
+Datas condicionadas à aquisição, calibração e dados suficientes. Três vasos fornecem um caso por tratamento; quinzenas e leituras sucessivas não são réplicas. Não abreviar os 30 dias nem declarar início antes da preparação. Replanejar se necessário, mantendo orçamento fixo e limitações explícitas. Metas de desempenho são expectativas a testar.

@@ -6,6 +6,10 @@ Execução prática de um protótipo de baixo custo com ESP32, sensores, control
 
 Ilustração conceitual; ligações elétricas e montagem da pesagem dependem dos componentes e da calibração.
 
+[Diagrama interativo do ensaio contínuo](.archify/workflow-ensaio-continuo-20261012-210000/ensaio-continuo.html).
+
+Pastas anteriores em `.archify/` são versões históricas; o link acima identifica o fluxo atual.
+
 ## Documentação
 
 - [MVP](docs/mvp.md): definição, funcionamento e critérios de demonstração.
@@ -25,7 +29,7 @@ Decisão aprovada: **opção A — 30 dias contínuos, um ESP32 e três vasos**,
 
 Orçamento limitado ao conjunto atual; modelos dos componentes ainda não definidos. Fonte, acionamento e pinagem dependem das peças reais. Cultura sugerida: alface em vasos de cerca de 3 litros; confirmar condições de bancada e calibração.
 
-Planejamento atual: bancada e modelo prontos até 31/10; comparação de 01/11 00:00 a 01/12 00:00 (São Paulo), com análise incremental durante novembro. Entrega em 01/12 deixa poucas horas após os 30 dias completos. Depende de aquisição, calibração e dados úteis; replanejar se não for viável. Metas de economia >20%, MAE <3 pontos e conformidade ≥95% são expectativas, não resultados garantidos. Grafana será a visualização central; painéis experimentais/intervenções ainda pendentes.
+Planejamento atual: bancada e modelo prontos até 31/10; comparação de 01/11 00:00 a 01/12 00:00 (São Paulo), com análise incremental durante novembro. Entrega em 01/12 deixa poucas horas após os 30 dias completos. Depende de aquisição, calibração e dados úteis; replanejar se não for viável. Metas de economia >20%, MAE <3 pontos e conformidade ≥95% são expectativas, não resultados garantidos. Grafana centraliza os painéis por vaso/período, qualidade, ciclos e intervenções; resultados físicos continuam pendentes.
 
 ## Estrutura
 

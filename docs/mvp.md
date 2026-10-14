@@ -1,6 +1,8 @@
 # MVP de irrigação inteligente
 
-[Abrir diagrama interativo do funcionamento](../.archify/workflow-fluxo-mvp-20261012-162340/fluxo-mvp.html).
+[Abrir diagrama interativo de três vasos e 30 dias](../.archify/workflow-ensaio-continuo-20261012-210000/ensaio-continuo.html).
+
+Fluxo em português, controles nativos do Archify em inglês. Diagrama validado e conferido nos temas claro/escuro; descreve também as etapas físicas pendentes.
 
 ![Montagem conceitual do protótipo](imagens/montagem-conceitual-mvp.png)
 

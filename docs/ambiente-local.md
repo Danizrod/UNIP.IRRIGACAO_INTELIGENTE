@@ -36,6 +36,8 @@ docker compose --profile simulation run --rm simulator python three_units_integr
 
 Testes unitários e de banco em esquemas isolados verificam MQTT/TLS, ACL, duplicidade, expiração, rejeições, decisões, ciclos e desconexão/retomada. Testes de banco exigem `TEST_DATABASE_URL` e são ignorados no comando padrão. Simulação usa exclusivamente identidade `sim-01` e origem `simulation`; testes de integração devem executar sequencialmente. A integração de três vasos usa previsões e doses sintéticas, sem medir economia real.
 
+Verificações em 12 e 14/10/2026: 45 testes Python sem banco e 15 testes de persistência aprovados; integrações de três vasos repetidas, controle, contingência e ML aprovadas; consultas Grafana e restauração isolada verificadas. A proteção de fila rejeita alterações de parâmetros/versão do modelo após a decisão. Testes C++ e compilação ESP-IDF padrão/simulação também aprovados. Não houve ensaio físico.
+
 ## Simulação e ML
 
 ```powershell

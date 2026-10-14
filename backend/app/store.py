@@ -240,6 +240,12 @@ def revalidate_queued(conn, command, now):
     prediction=Prediction.model_validate(row['payload']) if row else None
     previous=conn.execute("SELECT issued_at FROM commands WHERE device_id=%s AND payload->>'experiment_id'=%s AND payload->>'unit_id'=%s AND command_id<>%s AND status NOT IN ('rejected','expired','queued') ORDER BY issued_at DESC LIMIT 1",(cfg.device_id,cfg.experiment_id,cfg.unit_id,command['command_id'])).fetchone()
     decision=conn.execute('SELECT payload FROM decisions WHERE request_id=%s',(command.get('decision_id'),)).fetchone() if command.get('decision_id') else None
+    if decision:
+        from app.control import configuration_key
+        if decision['payload'].get('configuration_key') != configuration_key(cfg):
+            return 'configuration_changed_after_decision'
+        if command.get('model_version') and (not prediction or prediction.model_version != command['model_version']):
+            return 'model_changed_after_decision'
     latch=bool(decision and decision['payload'].get('hysteresis_latched'))
     allowed,reason=decide(cfg,reading,now,previous['issued_at'] if previous else None,prediction,False,True,latch)
     # Manual commands retain legacy policy override but never override safety guards.

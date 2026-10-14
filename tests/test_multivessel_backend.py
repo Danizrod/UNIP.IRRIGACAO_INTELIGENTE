@@ -77,6 +77,18 @@ class MultiVesselTests(existing.BackendStoreTests):
         with store.connect() as conn:
             self.assertEqual(conn.execute('SELECT status FROM commands').fetchone()['status'],'rejected')
 
+    def test_queue_rejects_parameter_changes_after_decision(self):
+        self.evaluation(self.second)
+        changed=self.second.model_copy(update={'soil_low':35})
+        with store.connect() as conn:
+            conn.execute("UPDATE control_configs SET payload=%s WHERE payload->>'unit_id'=%s",(Jsonb(changed.model_dump(mode='json')),changed.unit_id))
+        publisher=Publisher()
+        self.assertTrue(dispatch_once(publisher))
+        self.assertEqual(publisher.sent,[])
+        with store.connect() as conn:
+            reason=conn.execute('SELECT reason FROM rejected_messages ORDER BY rejection_id DESC LIMIT 1').fetchone()['reason']
+            self.assertEqual(reason,'queued_revalidation:configuration_changed_after_decision')
+
     def test_refill_blocks_shared_executor_and_invalidates_cycle(self):
         self.evaluation(self.cfg)
         publisher=Publisher();dispatch_once(publisher)
