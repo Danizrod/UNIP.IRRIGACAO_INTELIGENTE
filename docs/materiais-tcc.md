@@ -12,7 +12,7 @@ As quantidades indicam o que deve estar disponível, não o que obrigatoriamente
 | Cabo USB de dados compatível com a placa | 1 | Programar e alimentar o ESP32 pelo notebook. |
 | Sensor capacitivo de umidade do solo | 3 | Medir a condição de umidade do substrato após calibração. |
 | DHT22 | 1 | Medir temperatura e umidade do ar na bancada. |
-| Célula de carga de barra, ponte completa, capacidade candidata de 5 kg | 1 | Pesar o reservatório para estimar a água retirada em cada ciclo. |
+| Célula de carga de barra, ponte completa, capacidade candidata de 50 kg | 1 | Pesar o reservatório para estimar a água retirada em cada ciclo. |
 | Módulo HX711 | 1 | Converter o sinal da célula de carga para leitura pelo ESP32. |
 | Módulo INA219 | 1 | Medir tensão e corrente do ramo da bomba para calcular energia. |
 | Mini bomba submersível DC compatível com operação a 5 V | 3 | Transferir água do reservatório ao vaso. |
