@@ -4,9 +4,9 @@
 
 Fluxo em português, controles nativos do Archify em inglês. Diagrama validado e conferido nos temas claro/escuro; descreve também as etapas físicas pendentes.
 
-![Montagem conceitual do protótipo](imagens/montagem-conceitual-mvp.png)
+![Bancada de diagnóstico atual](imagens/bancada-diagnostico-led.png)
 
-Imagem atualizada com imagegen: um ESP32, três vasos T1/T2/T3, três sensores e bombas, reservatório e medidores compartilhados. É uma visualização conceitual, não esquema elétrico ou desenho mecânico validado. O volume indicado na ilustração é apenas candidato; a capacidade do recipiente e da célula depende do piloto e da massa total. Cabo USB liga notebook e ESP32. A plataforma real deve transmitir o peso pela célula, sem apoios paralelos ou tração de fios/mangueiras. Pinagem e potência dependem das peças escolhidas.
+Imagem conceitual da etapa atual: sensores, INA3221, BD135 e uma carga LED. Não comprova circuito elétrico, medição calibrada ou operação das bombas. O ensaio final continua sendo de três vasos; a ilustração antiga em `imagens/montagem-conceitual-mvp.png` é histórica e não descreve os componentes atuais.
 
 O MVP é um protótipo de bancada com **um ESP32, três vasos e três bombas**, conectado a uma aplicação local no notebook. Demonstra medir, transmitir, prever, decidir, irrigar e registrar resultados por tratamento.
 
@@ -20,9 +20,9 @@ A entrega inclui montagem, software, calibração, testes e documentação técn
 | --- | --- |
 | Sensor de solo e DHT22 | Medir condição de umidade do substrato, temperatura e umidade do ar. |
 | ESP32 | Ler sensores, transmitir dados, receber comandos e controlar a bomba com proteções locais. |
-| Célula de carga e HX711 | Pesar o reservatório para estimar água retirada por ciclo. |
-| INA219 | Medir tensão e corrente do ramo da bomba para calcular energia. |
-| MOSFET e bomba | Acionar a irrigação e transportar água ao vaso. |
+| Quatro sensores de carga de três fios e um HX711 | Pesar o reservatório como conjunto para estimar água retirada por ciclo. |
+| INA3221 | Medir tensão e corrente do ramo da bomba para calcular energia. |
+| BD135 NPN e bomba | Acionamento instalado em avaliação; a capacidade de acionar motores ainda precisa ser validada. |
 | MQTT/Mosquitto | Transportar telemetria, comandos e confirmações com TLS e autenticação. |
 | Backend Python/FastAPI | Validar e registrar dados, executar previsão e aplicar regras de decisão. |
 | PostgreSQL | Armazenar leituras, previsões, decisões, comandos e resultados. |
@@ -84,3 +84,6 @@ O protocolo aprovado usa três vasos, um por tratamento: comparação simultâne
 **Estado em 12/10/2026:** configuração/históricos por vaso, fila compartilhada, ciclos sequenciais e atribuição de consumos verificados em simulação; firmware de três canais compilado. Grafana centraliza a visualização. Drivers, montagem, calibração, modelo com dados físicos e medições reais continuam pendentes; atuação física bloqueada. Previsão estima solo observado sob a política coletada, não cenário sem irrigação.
 
 Documentos relacionados: [materiais](materiais-tcc.md), [tarefas](tasks-tcc.md) e [ambiente local](ambiente-local.md).
+
+
+**Atualização de bancada em 01/11/2026:** LED em uma saída, motores desconectados. Diagnóstico isolado usa Arduino e a página do sketch do usuário; aplicação final continua ESP-IDF/MQTT/Grafana. Ver [ligações](ligacoes-prototipo.md). A janela original de novembro não está comprovadamente iniciada; replanejar após a preparação, mantendo 30 dias.

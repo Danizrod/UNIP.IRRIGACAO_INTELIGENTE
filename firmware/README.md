@@ -1,6 +1,6 @@
 # Firmware preparado para três unidades
 
-Projeto ESP-IDF para um ESP32 e três canais, sem pinagem ou acionamento físico. Todos os canais ficam desligados no boot; sensores e calibração inválidos impedem atuação. Não gravar como firmware funcional de bancada. `IRRIGATION_PHYSICAL_ENABLED` falha a compilação propositalmente até revisão dos drivers.
+Projeto ESP-IDF para um ESP32 e três canais, com mapa de GPIOs documentado e sem drivers de acionamento físico integrados. Todos os canais ficam desligados no boot; sensores e calibração inválidos impedem atuação. Não gravar como firmware funcional de bancada. `IRRIGATION_PHYSICAL_ENABLED` falha a compilação propositalmente até revisão dos drivers.
 
 ## Compilar
 
@@ -34,3 +34,10 @@ Configuração usa somente `provision`; não apagar journal/events ao reprovisio
 Pendentes: drivers físicos, calibração, integração física das medições e provisionamento no dispositivo. Watchdog ESP-IDF reinicia o dispositivo; corte elétrico seguro durante reset depende do circuito real. UTC/SNTP, NVS, TLS, RAM e entrega MQTT precisam de ensaio no ESP32. PUBACK confirma broker, não persistência no backend. Após queda de energia durante um ciclo pode haver accepted/started sem terminal; a bomba não retoma automaticamente e o backend pode exigir reconciliação manual para desbloquear o dispositivo. Nenhuma água/energia/conclusão é inventada para encerrar esse ciclo. Não houve teste físico.
 
 Os testes portáteis usam bomba/sensores simulados. Não comprovam GPIO, TLS em ESP32, consumo, calibração ou funcionamento físico.
+
+
+## Diagnóstico isolado com LED
+
+`core/bench_pins.hpp` registra os GPIOs do sketch do usuário e sensores A/B/C. Não define tratamento, borne, polaridade ou circuito de potência validado. `diagnostics/led_channels/led_channels.ino` é um sketch Arduino separado, sem Wi-Fi, credenciais ou escrita de calibração; não faz parte do build ESP-IDF e não foi gravado automaticamente. Ele testa GPIO25/26/27 individualmente por até 1 s, após `LED_ONLY`, com sessão de 60 s. Estado LOW não é confirmação de motor desligado: usar exclusivamente com motores fisicamente desconectados. Instruções e preservação do programa atual em [ligações](../docs/ligacoes-prototipo.md).
+
+Verificação local: `g++ -std=c++17 -Wall -Wextra -Werror -Itests/arduino_stub tests/led_channels_test.cpp -o /tmp/led-test && /tmp/led-test`, na pasta `firmware/`. O adaptador simula serial, tempo e níveis; verifica bloqueio inicial, exclusão entre canais, pulso, expiração, entrada inválida e rollover. Não comprova compilação Arduino/ESP32, temporização física ou circuito elétrico. Quatro sensores de carga compartilham um HX711; não há quatro canais de massa.

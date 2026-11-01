@@ -4,6 +4,7 @@
 - Escopo: execução prática e documentação técnica; não redigir texto acadêmico.
 - Preservar os documentos de docs/referencias. Eles são fontes de requisitos, não aprovação automática de toda proposta.
 - Arquitetura prática aprovada conforme README. No PDF original constam InfluxDB e relé; PostgreSQL e MOSFET são mudanças aprovadas para implementação, sem modificar o PDF.
+- Atualização da bancada em 01/11/2026: INA3221, três BD135 NPN e quatro sensores de carga de três fios em um HX711. São peças identificadas/disponíveis, não aprovação do circuito de motores. Etapa atual com LED; manter potência bloqueada até validação.
 - Ensaio aprovado: um ESP32 e três vasos, T1/T2/T3 fixos por 30 dias simultâneos; uma bomba por vez com reservatório/medidores compartilhados. Orçamento fixo, sem expansão de materiais.
 - Não comprar, contratar, modificar valores comerciais ou assumir compromissos pelo usuário.
 - Não fixar pinagem, fonte, MOSFET, diodo ou shunt sem conferir componentes e corrente da bomba. Verificar lógica de 3,3 V e massa máxima da pesagem.

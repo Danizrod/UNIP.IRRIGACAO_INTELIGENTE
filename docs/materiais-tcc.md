@@ -12,13 +12,13 @@ As quantidades indicam o que deve estar disponível, não o que obrigatoriamente
 | Cabo USB de dados compatível com a placa | 1 | Programar e alimentar o ESP32 pelo notebook. |
 | Sensor capacitivo de umidade do solo | 3 | Medir a condição de umidade do substrato após calibração. |
 | DHT22 | 1 | Medir temperatura e umidade do ar na bancada. |
-| Célula de carga de barra, ponte completa, capacidade candidata de 50 kg | 1 | Pesar o reservatório para estimar a água retirada em cada ciclo. |
-| Módulo HX711 | 1 | Converter o sinal da célula de carga para leitura pelo ESP32. |
-| Módulo INA219 | 1 | Medir tensão e corrente do ramo da bomba para calcular energia. |
-| Mini bomba submersível DC compatível com operação a 5 V | 3 | Transferir água do reservatório ao vaso. |
-| MOSFET compatível com comando de 3,3 V | 3 | Ligar e desligar a bomba pelo ESP32. |
+| Sensor de carga de três fios, tipo balança, capacidade não identificada | 4, já disponíveis | Compor o conjunto de pesagem do reservatório, ligado a um único HX711. |
+| Módulo HX711 | 1 | Converter o sinal conjunto dos quatro sensores de carga para leitura pelo ESP32. |
+| Módulo INA3221 | 1 | Medir tensão e corrente do ramo da bomba para calcular energia. |
+| Mini bomba submersível DC sem identificação, três do mesmo modelo | 3 | Irrigação futura; referência de anúncio 3–6 V/~200 mA ainda não confirmada. |
+| Transistor BD135 NPN já instalado | 3 | Acionamento em avaliação; teste com LED, sem liberação das bombas. |
 | Diodo de proteção e resistores do acionamento | 3 conjuntos | Proteger o circuito e manter a bomba desligada quando não houver comando. |
-| Fonte de 5 V para a bomba | 1 | Alimentar o motor sem usar a alimentação da placa ESP32. |
+| Fonte externa de 5 V, capacidade a conferir | 1 prevista | Alimentação futura das bombas; bancada atual alimentada por USB, com LED. |
 | Fios de potência, bornes e fusível/proteção | 1 conjunto | Conectar e proteger a alimentação e o acionamento. |
 | Protoboard/placa de montagem e jumpers de sinal | 1 conjunto | Montar as conexões dos sensores e do controlador. |
 | Reservatório com tampa, aproximadamente 1 litro | 1 | Armazenar a água e permitir a medição por pesagem. |
@@ -30,7 +30,7 @@ As quantidades indicam o que deve estar disponível, não o que obrigatoriamente
 | Substrato comercial para hortaliças, de lote único | Cerca de 12–15 litros, conferir volume útil dos vasos | Preencher o vaso e realizar a calibração inicial. |
 | Muda de alface uniforme | 3 | Servir como condição de referência do protótipo com planta. |
 
-Fonte, MOSFET, diodo, resistores e fusível serão especificados após conferir a bomba e os módulos escolhidos. A capacidade da célula de carga deve considerar toda a montagem com o reservatório cheio. Alface, volume do vaso e substrato são propostas de bancada ainda sujeitas à definição do experimento.
+BD135 identificados por foto. Fonte, circuito de base, diodo, resistores e fusível precisam de conferência com a corrente real das bombas. A capacidade da célula de carga deve considerar toda a montagem com o reservatório cheio. Alface, volume do vaso e substrato são propostas de bancada ainda sujeitas à definição do experimento.
 
 ## Instrumentos e recursos de apoio
 
@@ -47,7 +47,7 @@ O software será executado localmente com ESP-IDF, Docker Compose, Mosquitto, Fa
 
 ## Compartilhamento e compra econômica
 
-Manter um ESP32, um DHT22, um HX711/célula, um INA219, uma fonte e um reservatório. Acionar **uma bomba por vez**, identificando retirada de água e energia de cada ciclo. Conferir se o conjunto de fios, bornes, fixadores e placa atende aos três ramos.
+Manter um ESP32, um DHT22, um HX711 com quatro sensores de carga, um INA3221, uma fonte e um reservatório. Acionar **uma bomba por vez**, identificando retirada de água e energia de cada ciclo. Conferir se o conjunto de fios, bornes, fixadores e placa atende aos três ramos.
 
 O reservatório de ~1 L é candidato; dimensionar autonomia conjunta e massa máxima após o piloto. Reaproveitar recipiente maior se necessário, sem trocar a célula antes de conferir toda a massa. Fonte e proteções dependem da corrente real e da arquitetura de acionamento.
 

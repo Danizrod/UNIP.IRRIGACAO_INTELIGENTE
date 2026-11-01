@@ -4,7 +4,7 @@ Decisão aprovada em 12/10/2026: **opção A — ensaio simultâneo contínuo de
 
 ## Bancada e alcance estatístico
 
-Adotar três vasos equivalentes, um por tratamento fixo, com um ESP32 e três sensores/bombas/acionamentos. Compartilhar DHT22, reservatório, célula/HX711 e INA219. Manter tratamentos durante todo o ensaio e sortear qual vaso recebe cada um. Não ampliar compras automaticamente.
+Adotar três vasos equivalentes, um por tratamento fixo, com um ESP32 e três sensores/bombas/acionamentos. Compartilhar DHT22, reservatório, quatro sensores de carga/um HX711 e INA3221. Manter tratamentos durante todo o ensaio e sortear qual vaso recebe cada um. Não ampliar compras automaticamente.
 
 Este é o mínimo para observar os três tratamentos simultaneamente: **n=1 vaso por tratamento**. Permite estatística descritiva dos casos, séries temporais e avaliação técnica; não separa efeito do tratamento de particularidades da planta/vaso. Dias, ciclos e leituras não são réplicas independentes. Não usar teste entre tratamentos tratando milhares de leituras como tamanho amostral nem afirmar efeitos generalizáveis.
 
@@ -34,7 +34,7 @@ As leituras dos vasos ocorrerão no mesmo período; ciclos de irrigação serão
 4. Persistir resultado, qualidade, horários, versão de calibração e confirmação antes de liberar o próximo ciclo. Falta de confirmação impede presumir que o ramo desligou.
 5. Reposição de água somente com todos os ramos desligados, fora de ciclos; registrar intervenção e nova referência. Reposição, vibração, vazamento, sifonamento ou peso instável invalidam a medição afetada, sem fabricar volume zero.
 
-Pesar retirada não garante água entregue: verificar drenagem, vazamentos e variação de água nas mangueiras. INA219 mede bombas, não o consumo total do sistema. Dimensionar reservatório pela demanda conjunta e frequência de inspeção; ~1 L pode exigir reposição frequente. Dimensionar célula para toda a massa e fonte para o ramo escolhido, sem pressupor componentes comerciais.
+Pesar retirada não garante água entregue: verificar drenagem, vazamentos e variação de água nas mangueiras. INA3221 mede bombas, não o consumo total do sistema. Dimensionar reservatório pela demanda conjunta e frequência de inspeção; ~1 L pode exigir reposição frequente. Dimensionar célula para toda a massa e fonte para o ramo escolhido, sem pressupor componentes comerciais.
 
 ## Resultados e visibilidade
 
@@ -58,3 +58,6 @@ Grafana centraliza linhas de solo por vaso/tratamento, comandos, ciclos, decisõ
 - Sem bancada/calibração/modelo prontos, não declarar início dos 30 dias nem substituir falhas por simulação. Replanejar prazo ou alcance se não cumprir critérios.
 
 Manter identidade e tratamento de cada vaso; congelar calibração, parâmetros e modelo antes da coleta. Próximas etapas: notebook, drivers, montagem, calibração e ensaio físico. Aquisição e preparação do notebook serão executadas quando o usuário indicar.
+
+
+**Estado em 01/11/2026:** bancada em diagnóstico com sensores e LED em uma saída BD135; não há ciclo físico de irrigação validado. INA3221 possui três canais, mas a correspondência canal/ramo ainda precisa de conferência. Não atribuir canais pela ordem dos GPIOs. A janela original de 01/11 a 01/12 deve ser replanejada após preparo; manter 30 dias completos. Leituras do sketch de bancada não são dados do ensaio.

@@ -1,0 +1,21 @@
+#pragma once
+#include <array>
+
+// User test sketch + physical soil identification, 2026-11-01.
+// A GPIO assignment is not approval of the motor circuit or voltage levels.
+namespace bench {
+// Four three-wire load sensors share HX711 channel A; no per-sensor readings.
+constexpr int load_sensor_count = 4;
+constexpr int hx_dout = 5;
+constexpr int hx_sck = 4;
+constexpr int i2c_sda = 21;
+constexpr int i2c_scl = 22;
+constexpr int ina_address = 0x40;
+constexpr int dht_data = 18;
+constexpr std::array<int, 3> soil_pins{{32, 33, 34}};
+constexpr std::array<char, 3> soil_labels{{'B', 'A', 'C'}};
+constexpr std::array<int, 3> output_pins{{25, 26, 27}};
+// Connector -> GPIO, output polarity, INA channel -> load and T1/T2/T3
+// assignment remain unverified. Never infer them from array ordering.
+constexpr bool motor_circuit_validated = false;
+}
