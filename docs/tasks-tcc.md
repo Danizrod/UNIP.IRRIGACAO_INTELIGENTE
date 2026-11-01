@@ -30,7 +30,8 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 
 - [x] Registrar GPIOs do sketch, BD135/INA3221 e sensores A/B/C identificados pelo usuário.
 - [x] Preparar observador HTTP somente leitura e sketch isolado para pulsos individuais nos LEDs.
-- [ ] Compilar o diagnóstico Arduino para a placa real e preservar firmware/calibração antes de qualquer gravação.
+- [x] Compilar o diagnóstico Arduino, verificar backup completo de 4 MB e restaurar programa original após o teste.
+- [x] Identificar o borne original com LED como GPIO26 por teste e observação do usuário.
 - [ ] Identificar qual GPIO controla o borne com LED e mapear os demais conectores.
 - [ ] Conferir alimentação, proteção indutiva, circuito de base, corrente das bombas e fonte.
 - [ ] Identificar capacidade da célula de carga e validar massa máxima.

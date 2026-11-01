@@ -15,6 +15,7 @@ constexpr int dht_data = 18;
 constexpr std::array<int, 3> soil_pins{{32, 33, 34}};
 constexpr std::array<char, 3> soil_labels{{'B', 'A', 'C'}};
 constexpr std::array<int, 3> output_pins{{25, 26, 27}};
+constexpr int verified_led_output = 26; // User observed pulses; original LED connector.
 // Connector -> GPIO, output polarity, INA channel -> load and T1/T2/T3
 // assignment remain unverified. Never infer them from array ordering.
 constexpr bool motor_circuit_validated = false;

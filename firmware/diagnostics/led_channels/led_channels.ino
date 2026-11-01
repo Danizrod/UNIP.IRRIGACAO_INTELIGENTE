@@ -2,7 +2,7 @@
 // Only upload with ALL motors disconnected; one LED + resistor is the load.
 // No Wi-Fi credentials, EEPROM changes, tara, calibration or motor control.
 #include <Arduino.h>
-#include "../../core/bench_pins.hpp"
+#include "bench_pins.hpp" // Build with firmware/core on the compiler include path.
 
 bool armed = false;
 int selected = -1;
