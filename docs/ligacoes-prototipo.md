@@ -13,16 +13,16 @@ Placa ESP32 de 30 pinos, família ESP32 clássica/WROOM; revisão exata não ide
 | Quatro sensores de carga | Sem GPIO direto | Conjunto ligado a E+, E−, A− e A+ do mesmo HX711 |
 | INA3221 SDA | 21 | I²C, endereço configurado 0x40 |
 | INA3221 SCL | 22 | I²C |
-| Comando de saída 1 | 25 | BD135 NPN instalado; borne/polaridade pendentes |
+| Comando de saída 1 | 25 | Segundo borne testado: três pulsos no LED confirmados pelo usuário |
 | Comando de saída 2 | 26 | Borne original com LED: pulsos HIGH confirmados visualmente; motores não validados |
-| Comando de saída 3 | 27 | BD135 NPN instalado; borne/polaridade pendentes |
+| Comando de saída 3 | 27 | Último borne testado: três pulsos no LED confirmados pelo usuário |
 | Sensor B / Solo 1 | 32 | Associação identificada pelo usuário |
 | Sensor A / Solo 2 | 33 | Associação identificada pelo usuário |
 | Sensor C / Solo 3 | 34 | Associação identificada pelo usuário |
 | DHT DATA | 18 | Driver DHT22 configurado; leituras recebidas |
 | LED auxiliar da placa | 2 | Presente no sketch original; não é saída de bomba |
 
-Não atribuir automaticamente T1/T2/T3 pela posição dos componentes. Falta associar bornes aos GPIOs e canais do INA às cargas. Durante o ensaio, fixar a associação sensor/bomba/tratamento e registrar no provisionamento.
+Não atribuir automaticamente T1/T2/T3 pela posição dos componentes. Os três bornes foram associados aos GPIOs por teste com LED; falta associar canais do INA às cargas. Durante o ensaio, fixar a associação sensor/bomba/tratamento e registrar no provisionamento.
 
 ## Componentes e pendências
 
@@ -69,8 +69,10 @@ Em 01/11/2026, três respostas reais de `/dados` foram registradas em `data/raw/
 
 Backup completo de 4 MB realizado e comparado com a flash por `esptool verify-flash`: digest correspondente. Chip identificado como ESP32-D0WD-V3, revisão 3.1. Backup e fonte fornecido com credenciais ficam somente em `.local/backups/esp32-com5-20261101/`, ignorados pelo Git. Manifesto contém SHA-256 e partições; não publicar o binário nem o fonte com senhas.
 
-Diagnóstico compilado com Arduino CLI 1.5.1/ESP32 2.0.17 e gravado apenas em app0 (`0x10000`), com hash conferido. O usuário não observou luz no GPIO25 e confirmou o LED piscando no GPIO26. Isso identifica apenas o borne originalmente ocupado; não comprova falha no outro canal nem habilita motores. A aplicação original foi restaurada com hash conferido. A página respondeu novamente em `192.168.15.39` e informou fator 45,47. Como no sketch original há tara automática no boot, não esperar preservação do zero anterior.
+Diagnóstico compilado com Arduino CLI 1.5.1/ESP32 2.0.17 e gravado apenas em app0 (`0x10000`), com hash conferido. O usuário não observou luz no GPIO25 e confirmou o LED piscando no GPIO26. Na primeira posição, isso identificou o borne originalmente ocupado; depois o usuário moveu o mesmo LED com resistor e confirmou três pulsos no GPIO25 no segundo borne e no GPIO27 no último. Os três bornes estão identificados por ordem de teste, sem presumir posição esquerda/direita. Os testes não validam corrente de motor, proteções nem mapeamento dos canais INA. A aplicação original foi restaurada com hash conferido. A página respondeu novamente em `192.168.15.39` e informou fator 45,47. Como no sketch original há tara automática no boot, não esperar preservação do zero anterior.
 
-Para mapear os outros bornes, desconectar USB e qualquer fonte, etiquetar o borne original como D26 e mover o mesmo LED com seu resistor para outro par de saída, respeitando a polaridade identificada. Não assumir polaridade apenas pela posição dos parafusos. Confirmar a posição antes de energizar se os polos não estiverem identificados. Repetir diagnóstico e registrar a observação, sem conectar motores. Restaurar novamente o programa de sensores ao encerrar.
+Para repetir a identificação em outra montagem, desconectar USB e qualquer fonte, etiquetar o borne original como D26 e mover o mesmo LED com seu resistor para outro par de saída, respeitando a polaridade identificada. Não assumir polaridade apenas pela posição dos parafusos. Confirmar a posição antes de energizar se os polos não estiverem identificados. Repetir diagnóstico e registrar a observação, sem conectar motores. Restaurar novamente o programa de sensores ao encerrar.
 
 [Diagrama de diagnóstico](../.archify/workflow-bancada-led-20261101-120000/bancada-led.html): validação de especificação, geração e verificação do artefato passaram. A inspeção automática em navegador falhou por erro do transporte DevTools no Windows; não declarar essa etapa aprovada. Rótulos em português, controles nativos em inglês.
+
+Resultado final dos bornes: **original = D26; segundo testado = D25; último testado = D27**. Etiquetar fisicamente antes de montar os ramos dos vasos; T1/T2/T3 ainda precisam de associação explícita.

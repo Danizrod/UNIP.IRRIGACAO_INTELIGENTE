@@ -32,7 +32,8 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 - [x] Preparar observador HTTP somente leitura e sketch isolado para pulsos individuais nos LEDs.
 - [x] Compilar o diagnóstico Arduino, verificar backup completo de 4 MB e restaurar programa original após o teste.
 - [x] Identificar o borne original com LED como GPIO26 por teste e observação do usuário.
-- [ ] Identificar qual GPIO controla o borne com LED e mapear os demais conectores.
+- [x] Mapear os três bornes por teste com LED: original D26, segundo D25 e último D27.
+- [ ] Associar canais do INA3221 aos ramos e registrar sensor/bomba/tratamento.
 - [ ] Conferir alimentação, proteção indutiva, circuito de base, corrente das bombas e fonte.
 - [ ] Identificar capacidade da célula de carga e validar massa máxima.
 - [ ] Integrar drivers físicos ao ESP-IDF e levar leituras calibradas ao Grafana.

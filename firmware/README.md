@@ -43,3 +43,5 @@ Os testes portáteis usam bomba/sensores simulados. Não comprovam GPIO, TLS em 
 Verificação local: `g++ -std=c++17 -Wall -Wextra -Werror -Itests/arduino_stub -Icore tests/led_channels_test.cpp -o /tmp/led-test && /tmp/led-test`, na pasta `firmware/`. O adaptador simula serial, tempo e níveis; verifica bloqueio inicial, exclusão entre canais, pulso, expiração, entrada inválida e rollover. Não comprova compilação Arduino/ESP32, temporização física ou circuito elétrico. Quatro sensores de carga compartilham um HX711; não há quatro canais de massa.
 
 Em 01/11/2026, o usuário confirmou LED no borne de GPIO26. Programa original restaurado após teste, página HTTP e fator 45,47 conferidos. Build Arduino CLI requer `firmware/core` no include path (`compiler.cpp.extra_flags=-I<caminho-curto>/firmware/core`). Backup binário e ferramentas ficam em `.local/`, fora do Git. O teste não valida a potência dos motores.
+
+Identificação visual dos três bornes concluída pelo usuário em 01/11/2026: original GPIO26, segundo testado GPIO25, último GPIO27. Testes com LED não identificam automaticamente canais do INA ou tratamentos e não validam motores.
