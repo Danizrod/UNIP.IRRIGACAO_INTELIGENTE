@@ -24,6 +24,17 @@ Base metodológica: [NIST — princípios de delineamento](https://itl.nist.gov/
 - Mesmos limites de segurança (água mínima, dose máxima, duração máxima e intervalo mínimo) para todos. Valores dependem dos componentes e das medições; não importar limites sintéticos.
 - Congelar parâmetros, modelo, critérios de validade e protocolo antes do início. Contingência de T3 identificada separadamente, inclusive tempo operando sem previsão.
 
+### Valores iniciais aprovados pelo usuário em 04/11/2026 (confirmar no piloto)
+
+Reservatório de ~1 L para os três vasos: ~800 mL úteis acima da reserva mínima, reposição prevista diariamente e registrada como intervenção. Nenhum valor abaixo foi medido; vazão da bomba (80–120 L/h de anúncio) não confirmada.
+
+- Dose comum: **50 mL por ciclo** (faixa de ajuste 30–80 mL), aplicada por tempo calibrado no piloto e conferida pela pesagem; não interromper a bomba por leitura de peso em tempo real.
+- T1: horários fixos com número de doses = consumo médio diário do piloto ÷ dose (ex.: 150 mL/dia → 07h, 12h, 17h).
+- T2: abaixo do limite inferior, uma dose; aguardar o intervalo mínimo e repetir enquanto o índice não atingir o limite superior (parada pelo alvo exigida no pré-projeto). Faixa e histerese definidas no piloto.
+- T3: mesma dose, faixa, parada e proteções do T2, antecipadas pela previsão (horizonte ainda a decidir: 30 min no pré-projeto, 6 h no código).
+- Proteções comuns: intervalo mínimo de 45 min por vaso, máximo de 300 mL/vaso/dia, duração máxima 2× o tempo calibrado e teto de 10 s, bloqueio com reservatório < 200 g de água, uma bomba por vez.
+- Aprovação da pesagem (carga de trabalho ~1,2 kg): deriva ≤ 1 g em qualquer janela de 5 min num registro ≥ 2 h; carga estática de ~1,2 kg por 30 min com variação ≤ 2 g; retirada de 50 g repetida 10 vezes com erro ≤ 2 g em ao menos 9 e estabilização em até 10 s; capacidade dos sensores confirmada acima da carga. Usar referência melhor que o celular.
+
 ## Reservatório e medidores compartilhados
 
 As leituras dos vasos ocorrerão no mesmo período; ciclos de irrigação serão **sequenciais**. Configurações e históricos separados por dispositivo/experimento/vaso; uma fila global por ESP32 protege a instrumentação comum. Não liberar bomba publicada/iniciada apenas porque o comando expirou: exigir resultado terminal e estabilização.
