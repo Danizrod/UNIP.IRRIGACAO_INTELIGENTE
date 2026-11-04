@@ -36,6 +36,8 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 - [ ] Associar canais do INA3221 aos ramos e registrar sensor/bomba/tratamento.
 - [ ] Conferir alimentação, proteção indutiva, circuito de base, corrente das bombas e fonte.
 - [ ] Identificar capacidade da célula de carga e validar massa máxima.
+- [x] Revisar sketch web e exemplo serial de pesagem; registrar filtros, bloqueios e ressalvas da biblioteca.
+- [ ] Fazer novo backup com fator 20,00 e executar diagnóstico isolado de deriva antes de aprovar a pesagem.
 - [ ] Integrar drivers físicos ao ESP-IDF e levar leituras calibradas ao Grafana.
 - [ ] Replanejar início/fim dos 30 dias após preparação; testes com LED não contam como ensaio.
 

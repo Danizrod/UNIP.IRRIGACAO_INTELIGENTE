@@ -76,3 +76,24 @@ Para repetir a identificação em outra montagem, desconectar USB e qualquer fon
 [Diagrama de diagnóstico](../.archify/workflow-bancada-led-20261101-120000/bancada-led.html): validação de especificação, geração e verificação do artefato passaram. A inspeção automática em navegador falhou por erro do transporte DevTools no Windows; não declarar essa etapa aprovada. Rótulos em português, controles nativos em inglês.
 
 Resultado final dos bornes: **original = D26; segundo testado = D25; último testado = D27**. Etiquetar fisicamente antes de montar os ramos dos vasos; T1/T2/T3 ainda precisam de associação explícita.
+
+
+## Revisão da pesagem em 04/11/2026
+
+IP confirmado por MAC e página: `http://192.168.15.30/`; DHCP pode alterá-lo. `/dados` informou fator **20,00**, HX inicializado e leituras de peso; o flag não comprova saúde contínua nem calibração. O fator 45,47 nos backups anteriores é histórico: não restaurar dados antigos sobre a calibração atual.
+
+O usuário informou referência de celular de 221 g, cantos 228/220/223/222 g e repetições centrais 223,67/225,08/224,48/225,10/227,73 g. A origem da referência não foi aferida por nós. Relatou deriva sem carga após reposicionar a plataforma: 11,36/14,31/15,37/15,83/19,59 g aos 1/3/5/10/15 min. São observações relatadas, sem aquisição sincronizada; a pesagem não está validada para pequenos volumes. Não corrigir a deriva por taras repetidas ou ajuste do fator.
+
+Revisão do sketch web fornecido e do exemplo serial enviado pelo usuário:
+
+- `getData()` já retorna média filtrada da HX711_ADC. `pesoRaw` do painel não é ADC bruto. A média externa de dez amostras acrescenta atraso, não explica sozinha a deriva por 15 min. Para comparar, usar uma só camada de filtro e não aplicar zona morta ao dado registrado.
+- O exemplo serial isola Wi-Fi, DHT, INA e alternância de saídas, sendo uma base melhor para diagnóstico; não é um firmware final e ainda contém bloqueios.
+- No código-fonte público consultado, `start(t, ...)` compara `millis()` com `t + 400` como tempo absoluto desde o boot. Se chamado após a espera pelo Wi-Fi, pode pular a fase de estabilização. A versão efetivamente compilada no sketch original não é conhecida. Preferir estabilização própria por diferença de tempos, mantendo `update()` ativo, e tara explícita após estabilização.
+- `while (!LoadCell.update())` não tem prazo; no serial, espera por fator e por confirmação de gravação não chama `update()`. Calibração/tara devem ser estados com prazo, cancelamento e aquisição contínua, sem espera infinita por entrada serial nem `parseFloat()` bloqueante.
+- Validar massa positiva e finita, fator finito e não nulo (sinal pode depender da orientação), retorno de `EEPROM.begin/commit` e tamanho/versão da configuração. Não reinstalar automaticamente o fator 31,79 se faltar calibração válida. `getNewCalibration()` já aplica o fator na biblioteca consultada: não é falta de `setCalFactor()` no exemplo serial.
+- Atualizar saúde por idade da última amostra, timeouts e finitude; durante tara/dados vencidos, publicar valor ausente/estado inválido. Registrar uptime, idade, taxa observada, fator, offset, início/fim de tara e eventual reconexão. Não rotular leitura filtrada como dado bruto.
+- Interrupções podem alongar SCK e interferir no HX711; conferir configuração/versão e temporização. Remover Wi-Fi e outras tarefas em teste controlado pode ajudar a isolar a causa, mas não demonstra interferência elétrica nem defeito mecânico por si só.
+
+Próximo ensaio proposto: pesagem isolada por serial, sem rede nem alternância de saídas, fator 20,00 preservado, filtro da biblioteca explícito, sem segunda média/zona morta/autozero; aquisição contínua, tara manual única após estabilização e registro por 15 min sem tocar na montagem. Antes de gravar, fazer novo backup completo: o backup de 01/11 contém fator antigo. Manter motores desconectados. Não trocar programa, fazer tara ou gravar EEPROM automaticamente nesta revisão.
+
+Fontes: [implementação HX711_ADC](https://github.com/olkal/HX711_ADC/blob/master/src/HX711_ADC.cpp), [API](https://github.com/olkal/HX711_ADC/blob/master/src/HX711_ADC.h), [configuração](https://github.com/olkal/HX711_ADC/blob/master/src/config.h). O código consultado não comprova a versão instalada no firmware original.
