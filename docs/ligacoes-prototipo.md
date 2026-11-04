@@ -38,8 +38,8 @@ GPIO5 participa da configuração de inicialização do ESP32; validar boot/rese
 ## O que pode ser feito agora
 
 1. Manter motores desconectados, LED com resistor e etiquetas A/B/C nos sensores.
-2. Observar solo, ambiente, peso e INA pelo painel do sketch atual. Seu endereço observado foi `http://192.168.15.39/`; DHCP pode alterá-lo. O painel temporário não substitui o Grafana do sistema final.
-3. Registrar respostas sem tara/calibração por `python tools/bench_monitor.py --ip 192.168.15.39 --samples 3 --interval 2 --output data/raw/diagnostico-led.jsonl`. Usar nome novo em cada coleta; diretório deve existir. O observador consulta somente `/dados` (o sketch limpa a mensagem temporária ao responder), exporta campos permitidos e marca `trial_eligible=false`. A data é de recepção no computador, não horário de aquisição. Falha permanece ausente; flags INA/HX do sketch indicam inicialização, não saúde contínua. NÃO importar esses registros como ensaio nem confirmar calibração com eles.
+2. Observar solo, ambiente, peso e INA pelo painel do sketch atual. Endereço observado em 04/11: `http://192.168.15.30/`; DHCP pode alterá-lo. O painel temporário não substitui o Grafana do sistema final.
+3. Registrar respostas sem tara/calibração por `python tools/bench_monitor.py --ip 192.168.15.30 --samples 3 --interval 2 --output data/raw/diagnostico-led.jsonl`. Usar nome novo em cada coleta; diretório deve existir. O observador consulta somente `/dados` (o sketch limpa a mensagem temporária ao responder), exporta campos permitidos e marca `trial_eligible=false`. A data é de recepção no computador, não horário de aquisição. Falha permanece ausente; flags INA/HX do sketch indicam inicialização, não saúde contínua. NÃO importar esses registros como ensaio nem confirmar calibração com eles.
 4. Depois da preservação do programa atual, usar o diagnóstico sequencial abaixo para identificar o borne com LED. Etiquetar o borne com GPIO25, 26 ou 27 conforme a observação. O teste não identifica os outros bornes sem mover a carga ou medir continuidade.
 5. Com alimentação desligada, completar continuidade/identificação dos canais e verificar fonte, proteções e célula. Após validação, implementar drivers no ESP-IDF e calibrar antes de ensaio físico.
 
@@ -95,5 +95,24 @@ Revisão do sketch web fornecido e do exemplo serial enviado pelo usuário:
 - Interrupções podem alongar SCK e interferir no HX711; conferir configuração/versão e temporização. Remover Wi-Fi e outras tarefas em teste controlado pode ajudar a isolar a causa, mas não demonstra interferência elétrica nem defeito mecânico por si só.
 
 Próximo ensaio proposto: pesagem isolada por serial, sem rede nem alternância de saídas, fator 20,00 preservado, filtro da biblioteca explícito, sem segunda média/zona morta/autozero; aquisição contínua, tara manual única após estabilização e registro por 15 min sem tocar na montagem. Antes de gravar, fazer novo backup completo: o backup de 01/11 contém fator antigo. Manter motores desconectados. Não trocar programa, fazer tara ou gravar EEPROM automaticamente nesta revisão.
+
+### Resultado do diagnóstico isolado (04/11/2026, à noite)
+
+Novo backup completo em `.local/backups/esp32-com5-20261104-fator20/`: bootloader/tabela, otadata, app0 e restante conferidos; NVS relida e conferida com o chip parado no bootloader (mudou após reboot por Wi-Fi/PHY). Fator gravado: **19,9955** (painel mostra 20,00). Diagnóstico `firmware/diagnostics/hx711_drift` gravado só em app0; app0 do backup restaurado depois, com hash e página conferidos.
+
+Fotos do usuário: quatro sensores sobre suportes plásticos nas extremidades da tampa, placa fina de compensado (~280 g, estimado ao levantá-la) apoiada nos quatro, sem cabos encostando. Ligação aparenta o arranjo padrão em ponte (pares preto/branco entre sensores vizinhos, quatro vermelhos em E+/E−/A−/A+), sem continuidade medida. DHT22 estava na saída de ar quente do notebook (36,6 °C) e foi afastado.
+
+Balança vazia, sem toque, uma série de cada condição (n=1, não há repetição):
+
+| Condição | Duração | Variação | Ruído (dp) |
+| --- | --- | --- | --- |
+| Sketch web, horas após boot, DHT a 36 °C, antes de mexer na placa | 5 min | +2,8 g (+0,9 g/min) | — |
+| Sketch web, após recolocar a placa | 7 min | +16,5 g (+1,5 g/min) | — |
+| Diagnóstico serial sem Wi-Fi, após tara única | 15 min | −5,4 g | 1,1 g |
+| Sketch web logo após boot (tara automática) | 15 min | +2,9 g | 0,9 g |
+
+Leitura: logo após o boot, os dois programas ficaram dentro de cerca de ±6 g em 15 min; a subida de ~1 g/min e o acúmulo de 11 para 87 g ocorreram com horas de operação, calor do notebook e manuseio. O Wi-Fi não aparece como causa dominante; a causa da deriva maior continua não isolada (temperatura e acomodação mecânica são hipóteses). A alternância das saídas alterou o peso em ~0,3 g. Às 19:19 o INA3221 retornou leitura inválida (−0,01 V; 1638 mA) com o painel ainda "OPERACIONAL": o firmware final deve rejeitar leituras I²C inconsistentes. Canal 3 do INA acompanha o LED (~21 mA quando GPIO25/27 em HIGH). Dados: `data/raw/deriva-vazio-20261104.jsonl`, `hx711-serial-20261104.log`, `deriva-web-pos-boot-20261104.jsonl` (fora do Git, `trial_eligible=false`).
+
+Próximo passo: registro longo (1–2 h ou noturno) com o DHT22 junto ao HX711/sensores e notebook afastado, para relacionar deriva e temperatura; depois, massa conhecida estável por tempo equivalente a um ciclo (fluência sob carga). A pesagem segue não validada.
 
 Fontes: [implementação HX711_ADC](https://github.com/olkal/HX711_ADC/blob/master/src/HX711_ADC.cpp), [API](https://github.com/olkal/HX711_ADC/blob/master/src/HX711_ADC.h), [configuração](https://github.com/olkal/HX711_ADC/blob/master/src/config.h). O código consultado não comprova a versão instalada no firmware original.

@@ -45,3 +45,7 @@ Verificação local: `g++ -std=c++17 -Wall -Wextra -Werror -Itests/arduino_stub 
 Em 01/11/2026, o usuário confirmou LED no borne de GPIO26. Programa original restaurado após teste, página HTTP e fator 45,47 conferidos. Build Arduino CLI requer `firmware/core` no include path (`compiler.cpp.extra_flags=-I<caminho-curto>/firmware/core`). Backup binário e ferramentas ficam em `.local/`, fora do Git. O teste não valida a potência dos motores.
 
 Identificação visual dos três bornes concluída pelo usuário em 01/11/2026: original GPIO26, segundo testado GPIO25, último GPIO27. Testes com LED não identificam automaticamente canais do INA ou tratamentos e não validam motores.
+
+## Diagnóstico isolado da pesagem
+
+`diagnostics/hx711_drift/hx711_drift.ino`: sketch Arduino separado, sem Wi-Fi, DHT, INA ou alternância de saídas (GPIO25/26/27 em LOW). Lê o fator da EEPROM (512 bytes, endereço 0) sem gravar; sem tara no boot, média extra, zona morta ou autozero. Estabiliza 3 s por diferença de tempo com `update()` contínuo; `TARA` pela serial faz uma tara não bloqueante com prazo. Saída CSV a cada 1 s com uptime, estado, idade da amostra, amostras no intervalo, contagens e gramas da média móvel da biblioteca (não ADC bruto), offset e timeout. Biblioteca HX711_ADC 1.2.12 (config padrão, 16 amostras), instalada em `.local/`. Registro: `tools/hx711_serial_log.py --port COM5 --output data/raw/<novo>.log` (uma `TARA` após 180 s). Gravar só em app0 com backup verificado e restaurar o app0 do backup ao terminar.
