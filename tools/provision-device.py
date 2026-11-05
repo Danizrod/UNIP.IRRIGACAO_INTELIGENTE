@@ -14,6 +14,9 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 KEYS = {'device','experiment','unit','broker','username','password','ca','ssid','wifi_password','ntp'}
+# Optional physical acquisition settings; absent => firmware publishes null, never a default.
+NUMERIC = {'scale_offset','scale_factor','dry1','wet1','dry2','wet2','dry3','wet3','telemetry_s'}
+OPTIONAL = NUMERIC | {'scale_cal','soil_cal','ina1','ina2','ina3'}
 
 
 def private_path(path):
@@ -47,7 +50,7 @@ def validate(settings, mode):
     present=unit_keys & settings.keys()
     if present and present != unit_keys:
         raise ValueError('Forneça as três unidades')
-    allowed=KEYS | unit_keys if present else KEYS
+    allowed=(KEYS | unit_keys if present else KEYS) | OPTIONAL
     required=KEYS-{'unit'} if present else KEYS
     if not required <= settings.keys() or not settings.keys() <= allowed or any(not isinstance(v,str) for v in settings.values()):
         raise ValueError('Campos settings inválidos')
@@ -80,6 +83,23 @@ def validate(settings, mode):
     if len(settings['ca'].encode())>8192 or 'PRIVATE KEY' in settings['ca']:
         raise ValueError('CA inválida')
     validate_ca(settings['ca'])
+    for key in NUMERIC & settings.keys():
+        try:
+            number=float(settings[key])
+        except ValueError:
+            raise ValueError('Valor numérico inválido') from None
+        if number!=number or number in (float('inf'),float('-inf')):
+            raise ValueError('Valor numérico inválido')
+    if 'telemetry_s' in settings and not 10<=float(settings['telemetry_s'])<=900:
+        raise ValueError('telemetry_s deve ficar entre 10 e 900')
+    if 'scale_factor' in settings and abs(float(settings['scale_factor']))<1e-6:
+        raise ValueError('Fator da balança nulo')
+    for key in ('ina1','ina2','ina3'):
+        if key in settings and settings[key] not in ('1','2','3'):
+            raise ValueError('Canal INA deve ser 1, 2 ou 3')
+    for key in ('scale_cal','soil_cal'):
+        if key in settings and not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,47}',settings[key]):
+            raise ValueError('Identificação de calibração inválida')
     if any('\x00' in value for value in settings.values()):
         raise ValueError('Settings contêm NUL')
     return settings
@@ -167,7 +187,7 @@ def main():
         print('Artefatos privados preparados em .local. Nenhum dispositivo foi gravado.')
         print('Imagem somente para partição provision da tabela conferida; nunca gravar sobre nvs/journal/eventoutbox.')
         print('Confira capacidade da placa e tabela/firmware compatíveis antes de qualquer gravação manual.')
-        print('Modo físico permanece sem drivers e com atuação bloqueada. Revise ACL/CA do notebook antes de conectar.')
+        print('Modo físico: sensores com drivers; atuação permanece bloqueada. Revise ACL/CA do notebook antes de conectar.')
     except (ValueError,RuntimeError,OSError,ImportError,json.JSONDecodeError):
         print('Provisionamento não concluído. Verifique formato, limites, CA e ESP-IDF; valores secretos não são exibidos.',file=sys.stderr)
         return 1

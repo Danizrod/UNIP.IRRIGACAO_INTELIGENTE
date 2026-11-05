@@ -22,7 +22,9 @@ services:
     environment:
       MQTT_BACKEND_PASSWORD: ${MQTT_BACKEND_PASSWORD:?execute bootstrap}
       MQTT_SIM_PASSWORD: ${MQTT_SIM_PASSWORD:?execute bootstrap}
-    ports: ['127.0.0.1:8883:8883']
+      MQTT_DEVICE_PASSWORD: ${MQTT_DEVICE_PASSWORD:?execute tools/rotate-broker-cert.py}
+    # Exposed to the home network for the ESP32 (TLS + per-device user/ACL); other services stay local.
+    ports: ['8883:8883']
     volumes:
       - ./infra/mosquitto:/mosquitto/config:ro
       - ./.local/certs:/certs:ro

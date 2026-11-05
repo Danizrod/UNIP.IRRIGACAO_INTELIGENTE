@@ -34,6 +34,17 @@ class ProvisionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             provision.validate(self.settings(),'physical')
 
+    def test_optional_physical_calibration_keys(self):
+        self.validation.stop()
+        base=dict(self.settings(),device='esp32-01',experiment='tcc-2026',username='esp32-01')
+        physical=dict(base,scale_cal='scale-20261104',scale_offset='8605705',scale_factor='19.9955',ina3='3',telemetry_s='60')
+        with patch.object(provision,'validate_ca'):
+            self.assertEqual(provision.validate(physical,'physical')['scale_factor'],'19.9955')
+            for change in [dict(scale_factor='0'),dict(scale_offset='abc'),dict(dry1='nan'),dict(ina1='4'),
+                           dict(telemetry_s='5'),dict(soil_cal='Solo 1'),dict(unknown='x')]:
+                with self.subTest(change=change),self.assertRaises(ValueError):
+                    provision.validate(dict(physical,**change),'physical')
+
     def test_bad_ca_and_private_path(self):
         self.validation.stop()
         with self.assertRaises(ValueError):

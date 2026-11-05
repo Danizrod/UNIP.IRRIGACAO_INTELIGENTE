@@ -77,12 +77,177 @@
       }
     },
     {
+      "id": 101,
+      "type": "stat",
+      "title": "Última mensagem recebida (segundos atrás)",
+      "datasource": {
+        "type": "postgres",
+        "uid": "irrigation-postgres"
+      },
+      "description": "Telemetria a cada 60 s. Acima de 180 s: verificar Wi-Fi, IP do notebook ou alimentação do ESP32.",
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 6,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 180
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "datasource": {
+            "type": "postgres",
+            "uid": "irrigation-postgres"
+          },
+          "rawSql": "SELECT EXTRACT(EPOCH FROM now()-max(received_at)) AS segundos FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "type": "timeseries",
+      "title": "Solo — leitura bruta do ADC por vaso (sem calibração; maior = mais seco)",
+      "datasource": {
+        "type": "postgres",
+        "uid": "irrigation-postgres"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 3,
+        "w": 18,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": false,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT collected_at AS time, unit_id AS metric, (payload->>'soil_raw')::int AS value FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring} AND $__timeFilter(collected_at) ORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "irrigation-postgres"
+          }
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "type": "timeseries",
+      "title": "Balança compartilhada — massa (g, calibração provisória; deriva não corrigida)",
+      "datasource": {
+        "type": "postgres",
+        "uid": "irrigation-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "unit": "massg"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT collected_at AS time, (payload->>'reservoir_mass_g')::float AS massa_g FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring} AND unit_id=(SELECT min(unit_id) FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}) AND $__timeFilter(collected_at) ORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "irrigation-postgres"
+          }
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "type": "timeseries",
+      "title": "Ambiente — DHT22 (bancada)",
+      "datasource": {
+        "type": "postgres",
+        "uid": "irrigation-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": false,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT collected_at AS time, (payload->>'temperature_c')::float AS temperatura_c, (payload->>'humidity_pct')::float AS umidade_pct FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring} AND unit_id=(SELECT min(unit_id) FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}) AND $__timeFilter(collected_at) ORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "irrigation-postgres"
+          }
+        }
+      ]
+    },
+    {
       "id": 2,
       "type": "timeseries",
       "title": "Índice relativo calibrado do solo",
       "gridPos": {
         "x": 0,
-        "y": 3,
+        "y": 16,
         "w": 16,
         "h": 9
       },
@@ -111,7 +276,7 @@
       "title": "Mensagens únicas persistidas na janela",
       "gridPos": {
         "x": 16,
-        "y": 3,
+        "y": 16,
         "w": 8,
         "h": 9
       },
@@ -133,7 +298,7 @@
       "title": "Comandos e confirmações",
       "gridPos": {
         "x": 0,
-        "y": 12,
+        "y": 25,
         "w": 24,
         "h": 8
       },
@@ -155,7 +320,7 @@
       "title": "Água retirada e energia por ciclo confirmado",
       "gridPos": {
         "x": 0,
-        "y": 20,
+        "y": 33,
         "w": 24,
         "h": 8
       },
@@ -177,7 +342,7 @@
       "title": "Decisões e uso do modelo",
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 41,
         "w": 24,
         "h": 8
       },
@@ -199,7 +364,7 @@
       "title": "Consumo observado válido por vaso — sem preencher ausências",
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 49,
         "w": 24,
         "h": 8
       },
@@ -221,7 +386,7 @@
       "title": "Leituras e cobertura por vaso — períodos não são réplicas",
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 57,
         "w": 24,
         "h": 8
       },
@@ -243,7 +408,7 @@
       "title": "Ciclos locais, contingência e falhas",
       "gridPos": {
         "x": 0,
-        "y": 52,
+        "y": 65,
         "w": 24,
         "h": 8
       },
@@ -265,7 +430,7 @@
       "title": "Intervenções e reposições — registro auditável",
       "gridPos": {
         "x": 0,
-        "y": 60,
+        "y": 73,
         "w": 24,
         "h": 8
       },
@@ -287,7 +452,7 @@
       "title": "Comandos sem resultado terminal — verificar antes de concluir consumo",
       "gridPos": {
         "x": 0,
-        "y": 68,
+        "y": 81,
         "w": 24,
         "h": 8
       },
@@ -309,7 +474,7 @@
       "title": "Rejeições e falhas de transporte — por dispositivo",
       "gridPos": {
         "x": 0,
-        "y": 76,
+        "y": 89,
         "w": 24,
         "h": 8
       },
@@ -331,7 +496,7 @@
       "title": "T3: erro de seis horas — pares válidos e alvos ausentes",
       "gridPos": {
         "x": 0,
-        "y": 84,
+        "y": 97,
         "w": 24,
         "h": 8
       },
