@@ -5,6 +5,8 @@ g++ -std=c++17 -Wall -Wextra -Werror -Icore tests/safety_test.cpp -o /tmp/irriga
 /tmp/irrigation-safety-test
 g++ -std=c++17 -Wall -Wextra -Werror -Icore tests/shared_rig_test.cpp -o /tmp/irrigation-shared-rig-test
 /tmp/irrigation-shared-rig-test
+g++ -std=c++17 -Wall -Wextra -Werror -Icore tests/sensor_math_test.cpp -o /tmp/irrigation-sensor-math-test
+/tmp/irrigation-sensor-math-test
 fresh_config=$(mktemp /tmp/irrigation-sdkconfig.XXXXXX)
 idf.py -D SDKCONFIG="$fresh_config" reconfigure
 idf.py build

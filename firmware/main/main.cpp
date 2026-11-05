@@ -2,6 +2,8 @@
 #include "retention.hpp"
 #include "durable_buffer.hpp"
 #include "shared_rig.hpp"
+#include "measurements.hpp"
+#include "hardware.hpp"
 #include "cJSON.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -81,10 +83,18 @@ static esp_mqtt_client_handle_t mqtt=nullptr;
 static std::string device,broker,username,password,ca,ssid,wifi_password,ntp,experiment;
 static std::array<UnitIdentity,3> units={UnitIdentity{"","T1"},UnitIdentity{"","T2"},UnitIdentity{"","T3"}};
 struct Message {std::string topic,payload;};
-static Buffer<Message> outbox(32);
+// ~40 min of physical telemetry (3 units/min) survives a broker/Wi-Fi outage in RAM.
+static Buffer<Message> outbox(120);
 static DurableBuffer* durable_events=nullptr;
 static std::array<Sensors,3> sensors; // Invalid by default; no fabricated physical measurements.
-static double shared_removed_ml=0;
+// Physical acquisition settings from `provision`; absent calibration => null values, never defaults.
+static constexpr const char* firmware_version="physical-telemetry-1";
+static constexpr double mass_stable_span_g=5; // Provisional: ~1 g noise observed on 04/11.
+static ScaleCalibration scale_calibration;
+static std::array<RelativeSoilCalibration,3> soil_calibration;
+static std::array<int,3> ina_channel{{-1,-1,-1}}; // Unit -> INA3221 channel; unknown until verified.
+static int64_t telemetry_period_s=60;
+[[maybe_unused]] static double shared_removed_ml=0;
 static bool connected=false;
 static bool subscribed=false;
 static std::atomic<bool> utc_synced{false};
@@ -111,6 +121,50 @@ static const char* source(){
  return "simulation";
 #else
  return "physical";
+#endif
+}
+static double parse_number(const std::string& text){
+ if(text.empty())return NAN;
+ char* end=nullptr;double value=strtod(text.c_str(),&end);
+ return end&&*end==0?value:NAN;
+}
+static void add_optional(cJSON* j,const char* key,std::optional<double> value){
+ if(value&&std::isfinite(*value))cJSON_AddNumberToObject(j,key,*value);else cJSON_AddNullToObject(j,key);
+}
+static void queue_physical_telemetry(const hardware::Snapshot& h,int64_t now){
+#if !CONFIG_IRRIGATION_SIMULATION
+ char stamp[32];time_t when=now;tm utc;gmtime_r(&when,&utc);strftime(stamp,sizeof(stamp),"%Y-%m-%dT%H:%M:%SZ",&utc);
+ bool soil_fresh=h.soil_at_ms>=0&&h.now_ms-h.soil_at_ms<=3000;
+ bool power_fresh=h.ina_ok&&h.power_at_ms>=0&&h.now_ms-h.power_at_ms<=3000;
+ bool climate_fresh=h.climate&&h.climate_at_ms>=0&&h.now_ms-h.climate_at_ms<=10000;
+ auto mass=h.scale_fresh?scale_calibration.grams(h.scale_counts):std::nullopt;
+ for(size_t i=0;i<3;++i){
+  const auto& identity=units[i];auto j=cJSON_CreateObject();cJSON_AddNumberToObject(j,"schema_version",1);
+  auto id=uuid();cJSON_AddStringToObject(j,"message_id",id.c_str());
+  cJSON_AddStringToObject(j,"device_id",device.c_str());cJSON_AddStringToObject(j,"experiment_id",experiment.c_str());cJSON_AddStringToObject(j,"unit_id",identity.unit_id.c_str());
+  cJSON_AddStringToObject(j,"treatment",identity.treatment.c_str());cJSON_AddStringToObject(j,"source","physical");cJSON_AddStringToObject(j,"collected_at",stamp);
+  cJSON_AddStringToObject(j,"firmware_version",firmware_version);
+  int raw=soil_fresh?h.soil_raw[i]:-1;
+  auto index=raw>=0?soil_calibration[i].index(raw):std::nullopt;
+  cJSON_AddStringToObject(j,"calibration_id",soil_calibration[i].id.empty()?"soil-uncalibrated":soil_calibration[i].id.c_str());
+  if(raw>=0)cJSON_AddNumberToObject(j,"soil_raw",raw);else cJSON_AddNullToObject(j,"soil_raw");
+  add_optional(j,"soil_index",index);cJSON_AddBoolToObject(j,"sensor_valid",index.has_value());
+  add_optional(j,"temperature_c",climate_fresh?std::optional<double>(h.climate->temperature_c):std::nullopt);
+  add_optional(j,"humidity_pct",climate_fresh?std::optional<double>(h.climate->humidity_pct):std::nullopt);
+  // Shared platform: the same reading is repeated per unit, not three measurements.
+  add_optional(j,"reservoir_mass_g",mass);
+  if(h.scale_fresh)cJSON_AddNumberToObject(j,"scale_counts",h.scale_counts);else cJSON_AddNullToObject(j,"scale_counts");
+  if(mass)cJSON_AddBoolToObject(j,"mass_stable",std::fabs(h.scale_span/scale_calibration.counts_per_g)<=mass_stable_span_g);else cJSON_AddNullToObject(j,"mass_stable");
+  if(scale_calibration.valid())cJSON_AddStringToObject(j,"scale_calibration_id",scale_calibration.id.c_str());
+  int channel=ina_channel[i];
+  bool power=channel>=0&&power_fresh&&h.power[channel].has_value();
+  add_optional(j,"pump_voltage_v",power?std::optional<double>(h.power[channel]->bus_v):std::nullopt);
+  add_optional(j,"pump_current_a",power?std::optional<double>(h.power[channel]->current_a):std::nullopt);
+  if(channel>=0)cJSON_AddNumberToObject(j,"ina_channel",channel+1);
+  char*s=cJSON_PrintUnformatted(j);if(s){outbox.push({"irrigation/v1/"+device+"/telemetry",s});free(s);}cJSON_Delete(j);
+ }
+#else
+ (void)h;(void)now;
 #endif
 }
 static const char* str(cJSON*j,const char*k){auto v=cJSON_GetObjectItemCaseSensitive(j,k);return cJSON_IsString(v)?v->valuestring:nullptr;}
@@ -178,7 +232,7 @@ static bool persist_event(size_t channel,const Event&e){
   char*s=cJSON_PrintUnformatted(j);bool saved=s&&durable_events->push_cycle(s,e.status);if(s)free(s);cJSON_Delete(j);
   return saved;
 }
-static void queue_synthetic_telemetry(size_t channel){
+[[maybe_unused]] static void queue_synthetic_telemetry(size_t channel){
 #if CONFIG_IRRIGATION_SIMULATION
  const auto& sensor=sensors[channel];const auto& identity=units[channel];
  auto j=cJSON_CreateObject();cJSON_AddNumberToObject(j,"schema_version",1);
@@ -194,6 +248,9 @@ static void queue_synthetic_telemetry(size_t channel){
 }
 extern "C" void app_main(){
  pump.off_all(); // First application action; physical driver intentionally absent.
+#if !CONFIG_IRRIGATION_SIMULATION
+ hardware::outputs_low();
+#endif
  setenv("TZ","UTC0",1);tzset();
  if(nvs_flash_init()!=ESP_OK){ESP_LOGE(TAG,"NVS unavailable; locked off");return;}
  static RetainedJournal journal(load_journal(),save_journal);
@@ -202,7 +259,18 @@ extern "C" void app_main(){
  nvs_handle_t settings;
  if(nvs_flash_init_partition("provision")==ESP_OK&&nvs_open_from_partition("provision","settings",NVS_READONLY,&settings)==ESP_OK){
   device=get(settings,"device");broker=get(settings,"broker");username=get(settings,"username");password=get(settings,"password");ca=get(settings,"ca");ssid=get(settings,"ssid");wifi_password=get(settings,"wifi_password");ntp=get(settings,"ntp");experiment=get(settings,"experiment");
-  units[0].unit_id=get(settings,"unit1");if(units[0].unit_id.empty())units[0].unit_id=get(settings,"unit");units[1].unit_id=get(settings,"unit2");units[2].unit_id=get(settings,"unit3");nvs_close(settings);
+  units[0].unit_id=get(settings,"unit1");if(units[0].unit_id.empty())units[0].unit_id=get(settings,"unit");units[1].unit_id=get(settings,"unit2");units[2].unit_id=get(settings,"unit3");
+  scale_calibration={get(settings,"scale_cal"),parse_number(get(settings,"scale_offset")),parse_number(get(settings,"scale_factor"))};
+  auto soil_id=get(settings,"soil_cal");
+  for(size_t i=0;i<3;++i){
+   auto suffix=std::to_string(i+1);
+   soil_calibration[i]={soil_id,parse_number(get(settings,("dry"+suffix).c_str())),parse_number(get(settings,("wet"+suffix).c_str()))};
+   double channel=parse_number(get(settings,("ina"+suffix).c_str()));
+   if(channel==1||channel==2||channel==3)ina_channel[i]=static_cast<int>(channel)-1;
+  }
+  double period=parse_number(get(settings,"telemetry_s"));
+  if(period>=10&&period<=900)telemetry_period_s=static_cast<int64_t>(period);
+  nvs_close(settings);
  }
  if(units[0].unit_id.empty()||units[1].unit_id.empty()||units[2].unit_id.empty()||units[0].unit_id==units[1].unit_id||units[0].unit_id==units[2].unit_id||units[1].unit_id==units[2].unit_id){ESP_LOGE(TAG,"Configure three distinct units; locked off");return;}
  Limits limits{};
@@ -212,6 +280,9 @@ extern "C" void app_main(){
  limits=Limits{true,50,10,30,60,20,5};
 #endif
  static SharedRig core(units,limits,journal,pump,uuid,persist_event,20,2);controller=&core;
+#if !CONFIG_IRRIGATION_SIMULATION
+ hardware::start(); // Sensors only; `limits` stays uncalibrated so no command can actuate.
+#endif
  if(!device.empty()&&broker.rfind("mqtts://",0)==0&&!username.empty()&&!password.empty()&&!ca.empty()&&!ssid.empty()&&!ntp.empty()){
   ESP_ERROR_CHECK(esp_netif_init());ESP_ERROR_CHECK(esp_event_loop_create_default());esp_netif_create_default_wifi_sta();wifi_init_config_t init=WIFI_INIT_CONFIG_DEFAULT();ESP_ERROR_CHECK(esp_wifi_init(&init));
   esp_sntp_config_t clock=ESP_NETIF_SNTP_DEFAULT_CONFIG(ntp.c_str());clock.start=false;clock.sync_cb=clock_synced;ESP_ERROR_CHECK(esp_netif_sntp_init(&clock));
@@ -234,7 +305,11 @@ extern "C" void app_main(){
   for(size_t i=0;i<3;++i){auto&s=sensors[i];if(!s.sampled_at)s.soil=40;else s.soil=s.soil>0.001?s.soil-0.001:0;s.valid=utc_synced.load();s.available_ml=shared_removed_ml<1000?1000-shared_removed_ml:0;s.removed_ml=shared_removed_ml;s.sampled_at=epoch();s.mass_stable=controller->stable();}
 #endif
   if(utc_synced.load())controller->tick(sensors,epoch());
+#if CONFIG_IRRIGATION_SIMULATION
   if(utc_synced.load()&&epoch()>1700000000&&epoch()-last_telemetry>=5){for(size_t i=0;i<3;++i)queue_synthetic_telemetry(i);last_telemetry=epoch();}
+#else
+  if(utc_synced.load()&&epoch()>1700000000&&epoch()-last_telemetry>=telemetry_period_s){queue_physical_telemetry(hardware::snapshot(),epoch());last_telemetry=epoch();}
+#endif
   if(connected&&subscribed&&utc_synced.load()&&epoch()>1700000000&&outbox.size()==0&&durable_events->size()==0&&in_flight==-1&&!controller->running())controller->synchronize(epoch());
   // PUBACK only releases the delivery buffer; it never proves physical actuation.
   if(connected&&in_flight==-1){

@@ -34,6 +34,20 @@ class ContractTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(ValidationError):
                 Telemetry(**self.fixture(**changes))
 
+    def test_physical_firmware_payload(self):
+        physical = self.fixture(device_id='esp32-01', experiment_id='tcc-2026', source='physical',
+            calibration_id='soil-uncalibrated', soil_raw=3329, soil_index=None, sensor_valid=False,
+            reservoir_mass_g=-3.4, scale_counts=8605637, mass_stable=True,
+            scale_calibration_id='scale-20261104-provisorio', pump_voltage_v=5.32,
+            pump_current_a=-0.0004, ina_channel=3, firmware_version='physical-telemetry-1')
+        item = Telemetry(**physical)
+        self.assertLess(item.reservoir_mass_g, 0)
+        self.assertIsNone(Telemetry(**dict(physical, soil_raw=None)).soil_raw)
+        for changes in [dict(scale_calibration_id=None), dict(ina_channel=4), dict(scale_counts=-1),
+                        dict(soil_raw=None, soil_index=50, sensor_valid=True)]:
+            with self.subTest(changes=changes), self.assertRaises(ValidationError):
+                Telemetry(**dict(physical, **changes))
+
     def test_unknown_fields_rejected(self):
         with self.assertRaises(ValidationError):
             Telemetry(**self.fixture(pump_on=True))

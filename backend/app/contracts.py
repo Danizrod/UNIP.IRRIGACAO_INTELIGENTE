@@ -16,19 +16,32 @@ class Telemetry(BaseModel):
     source: Literal['simulation', 'physical']
     collected_at: AwareDatetime
     calibration_id: str = Field(min_length=1, max_length=80)
-    soil_raw: int = Field(ge=0, le=4095, strict=True)
+    # Null when the ADC read failed; never replaced by a default value.
+    soil_raw: int | None = Field(ge=0, le=4095, strict=True)
     soil_index: float | None = Field(default=None, ge=0, le=100)
     sensor_valid: bool = Field(strict=True)
     temperature_c: float | None = Field(default=None, ge=-40, le=85)
     humidity_pct: float | None = Field(default=None, ge=0, le=100)
-    reservoir_mass_g: float | None = Field(default=None, ge=0)
+    # Relative to the provisioned tare: small negatives are drift evidence, not errors.
+    reservoir_mass_g: float | None = Field(default=None, ge=-5000, le=50000)
     pump_voltage_v: float | None = Field(default=None, ge=0, le=26)
-    pump_current_a: float | None = Field(default=None, ge=0)
+    # Signed shunt reading (INA3221 full scale 1.6 A at 0.1 ohm); noise can be slightly negative.
+    pump_current_a: float | None = Field(default=None, ge=-1.6, le=1.6)
+    # Physical acquisition metadata (optional so simulated messages stay valid).
+    firmware_version: str | None = Field(default=None, max_length=40)
+    scale_counts: int | None = Field(default=None, ge=0, le=0xFFFFFF, strict=True)
+    mass_stable: bool | None = None
+    scale_calibration_id: str | None = Field(default=None, min_length=1, max_length=80)
+    ina_channel: int | None = Field(default=None, ge=1, le=3, strict=True)
 
     @model_validator(mode='after')
     def consistency(self):
         if self.collected_at > datetime.now(timezone.utc) + timedelta(minutes=5):
             raise ValueError('collected_at está mais de cinco minutos no futuro')
+        if self.sensor_valid and self.soil_raw is None:
+            raise ValueError('sensor válido exige leitura bruta')
+        if self.reservoir_mass_g is not None and self.source == 'physical' and not self.scale_calibration_id:
+            raise ValueError('massa física exige identificação da calibração da balança')
         if self.sensor_valid and self.soil_index is None:
             raise ValueError('sensor válido exige soil_index calibrado')
         if not self.sensor_valid and self.soil_index is not None:
