@@ -126,13 +126,13 @@ class Prediction(StrictContract):
     source: Literal['simulation', 'physical']
     predicted_at: AwareDatetime
     valid_until: AwareDatetime
-    horizon_s: Literal[21600] = 21600
+    horizon_s: Literal[1800] = 1800
     soil_index: float = Field(ge=0, le=100)
     model_version: str = Field(min_length=1, max_length=100)
 
     @model_validator(mode='after')
     def consistency(self):
-        if self.valid_until <= self.predicted_at or self.valid_until - self.predicted_at > timedelta(hours=6):
+        if self.valid_until <= self.predicted_at or self.valid_until - self.predicted_at > timedelta(seconds=self.horizon_s):
             raise ValueError('validade da previsão fora dos limites')
         if self.predicted_at > datetime.now(timezone.utc) + timedelta(minutes=5):
             raise ValueError('previsão no futuro')

@@ -52,11 +52,62 @@
         "name": "period",
         "label": "Período de análise (não réplica)",
         "type": "custom",
-        "query": "total30,primeira15,ultima15",
+        "query": "total,primeira_metade,segunda_metade",
         "current": {
-          "text": "total30",
-          "value": "total30"
-        }
+          "text": "total",
+          "value": "total"
+        },
+        "options": [
+          {
+            "text": "total",
+            "value": "total",
+            "selected": true
+          },
+          {
+            "text": "primeira_metade",
+            "value": "primeira_metade",
+            "selected": false
+          },
+          {
+            "text": "segunda_metade",
+            "value": "segunda_metade",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "name": "inicio",
+        "label": "Início do ensaio físico (ISO, São Paulo)",
+        "type": "textbox",
+        "query": "2026-11-15T00:00:00-03:00",
+        "current": {
+          "text": "2026-11-15T00:00:00-03:00",
+          "value": "2026-11-15T00:00:00-03:00"
+        },
+        "options": [
+          {
+            "text": "2026-11-15T00:00:00-03:00",
+            "value": "2026-11-15T00:00:00-03:00",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "name": "fim",
+        "label": "Fim do ensaio físico (ISO, São Paulo)",
+        "type": "textbox",
+        "query": "2026-12-01T00:00:00-03:00",
+        "current": {
+          "text": "2026-12-01T00:00:00-03:00",
+          "value": "2026-12-01T00:00:00-03:00"
+        },
+        "options": [
+          {
+            "text": "2026-12-01T00:00:00-03:00",
+            "value": "2026-12-01T00:00:00-03:00",
+            "selected": true
+          }
+        ]
       }
     ]
   },
@@ -73,7 +124,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Origem **$source**, experimento **$experiment**. Ensaio contínuo de 30 dias, três vasos, **n=1 por tratamento**. Quinzenas não são réplicas. Resultados descritivos; simulação não comprova economia. Para fonte física, janela planejada 01/11–01/12 (São Paulo); o seletor de tempo também limita as consultas."
+        "content": "Origem **$source**, experimento **$experiment**. Três vasos, **n=1 por tratamento**; resultados descritivos. Fonte física: janela **$inicio → $fim** (ajuste nas variáveis ao iniciar o ensaio; duração real pode ser menor que 30 dias por decisão de 04/11). Metades são períodos de análise, não réplicas. A seção \"ao vivo\" mostra leituras brutas da bancada antes da calibração; simulação não comprova economia."
       }
     },
     {
@@ -259,7 +310,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "WITH anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN TIMESTAMPTZ '2026-11-01 00:00:00-03' ELSE (SELECT min(collected_at) FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}) END AS start_at), bounds AS (SELECT CASE WHEN ${period:sqlstring}='ultima15' THEN start_at+interval '15 days' ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira15' THEN start_at+interval '15 days' ELSE start_at+interval '30 days' END AS end_at FROM anchor) SELECT collected_at AS time, soil_index AS value, unit_id || ' / ' || treatment AS metric FROM telemetry CROSS JOIN bounds WHERE source = ${source:sqlstring} AND experiment_id = ${experiment:sqlstring} AND sensor_valid AND collected_at>=begin_at AND collected_at<end_at AND $__timeFilter(collected_at) ORDER BY collected_at"
+          "rawSql": "WITH sim AS (SELECT min(collected_at) AS first_at FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}), anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN ${inicio:sqlstring}::timestamptz ELSE first_at END AS start_at, CASE WHEN ${source:sqlstring}='physical' THEN ${fim:sqlstring}::timestamptz ELSE first_at+interval '30 days' END AS stop_at FROM sim), bounds AS (SELECT CASE WHEN ${period:sqlstring}='segunda_metade' THEN start_at+(stop_at-start_at)/2 ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira_metade' THEN start_at+(stop_at-start_at)/2 ELSE stop_at END AS end_at FROM anchor) SELECT collected_at AS time, soil_index AS value, unit_id || ' / ' || treatment AS metric FROM telemetry CROSS JOIN bounds WHERE source = ${source:sqlstring} AND experiment_id = ${experiment:sqlstring} AND sensor_valid AND collected_at>=begin_at AND collected_at<end_at AND $__timeFilter(collected_at) ORDER BY collected_at"
         }
       ],
       "fieldConfig": {
@@ -288,7 +339,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "WITH anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN TIMESTAMPTZ '2026-11-01 00:00:00-03' ELSE (SELECT min(collected_at) FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}) END AS start_at), bounds AS (SELECT CASE WHEN ${period:sqlstring}='ultima15' THEN start_at+interval '15 days' ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira15' THEN start_at+interval '15 days' ELSE start_at+interval '30 days' END AS end_at FROM anchor) SELECT count(*) AS messages FROM telemetry CROSS JOIN bounds WHERE source = ${source:sqlstring} AND experiment_id = ${experiment:sqlstring} AND collected_at>=begin_at AND collected_at<end_at AND $__timeFilter(collected_at)"
+          "rawSql": "WITH sim AS (SELECT min(collected_at) AS first_at FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}), anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN ${inicio:sqlstring}::timestamptz ELSE first_at END AS start_at, CASE WHEN ${source:sqlstring}='physical' THEN ${fim:sqlstring}::timestamptz ELSE first_at+interval '30 days' END AS stop_at FROM sim), bounds AS (SELECT CASE WHEN ${period:sqlstring}='segunda_metade' THEN start_at+(stop_at-start_at)/2 ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira_metade' THEN start_at+(stop_at-start_at)/2 ELSE stop_at END AS end_at FROM anchor) SELECT count(*) AS messages FROM telemetry CROSS JOIN bounds WHERE source = ${source:sqlstring} AND experiment_id = ${experiment:sqlstring} AND collected_at>=begin_at AND collected_at<end_at AND $__timeFilter(collected_at)"
         }
       ]
     },
@@ -310,7 +361,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "WITH anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN TIMESTAMPTZ '2026-11-01 00:00:00-03' ELSE (SELECT min(collected_at) FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}) END AS start_at), bounds AS (SELECT CASE WHEN ${period:sqlstring}='ultima15' THEN start_at+interval '15 days' ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira15' THEN start_at+interval '15 days' ELSE start_at+interval '30 days' END AS end_at FROM anchor) SELECT c.issued_at, c.payload->>'unit_id' AS vaso, c.payload->>'treatment' AS tratamento, c.status, c.payload->>'reason' AS motivo, c.command_id FROM commands c CROSS JOIN bounds WHERE c.source = ${source:sqlstring} AND c.payload->>'experiment_id' = ${experiment:sqlstring} AND c.issued_at>=begin_at AND c.issued_at<end_at AND $__timeFilter(c.issued_at) ORDER BY c.issued_at DESC LIMIT 100"
+          "rawSql": "WITH sim AS (SELECT min(collected_at) AS first_at FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}), anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN ${inicio:sqlstring}::timestamptz ELSE first_at END AS start_at, CASE WHEN ${source:sqlstring}='physical' THEN ${fim:sqlstring}::timestamptz ELSE first_at+interval '30 days' END AS stop_at FROM sim), bounds AS (SELECT CASE WHEN ${period:sqlstring}='segunda_metade' THEN start_at+(stop_at-start_at)/2 ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira_metade' THEN start_at+(stop_at-start_at)/2 ELSE stop_at END AS end_at FROM anchor) SELECT c.issued_at, c.payload->>'unit_id' AS vaso, c.payload->>'treatment' AS tratamento, c.status, c.payload->>'reason' AS motivo, c.command_id FROM commands c CROSS JOIN bounds WHERE c.source = ${source:sqlstring} AND c.payload->>'experiment_id' = ${experiment:sqlstring} AND c.issued_at>=begin_at AND c.issued_at<end_at AND $__timeFilter(c.issued_at) ORDER BY c.issued_at DESC LIMIT 100"
         }
       ]
     },
@@ -332,7 +383,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "WITH anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN TIMESTAMPTZ '2026-11-01 00:00:00-03' ELSE (SELECT min(collected_at) FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}) END AS start_at), bounds AS (SELECT CASE WHEN ${period:sqlstring}='ultima15' THEN start_at+interval '15 days' ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira15' THEN start_at+interval '15 days' ELSE start_at+interval '30 days' END AS end_at FROM anchor) SELECT e.occurred_at, c.payload->>'unit_id' AS vaso, c.payload->>'treatment' AS tratamento, e.payload->>'volume_ml' AS agua_ml, e.payload->>'energy_wh' AS energia_wh, e.payload->>'measurements_valid' AS medicao_valida, e.payload->>'reason' AS motivo FROM command_events e JOIN commands c USING(command_id) CROSS JOIN bounds WHERE c.source = ${source:sqlstring} AND c.payload->>'experiment_id' = ${experiment:sqlstring} AND e.status IN ('completed','failed') AND e.occurred_at>=begin_at AND e.occurred_at<end_at AND $__timeFilter(e.occurred_at) ORDER BY e.occurred_at DESC LIMIT 100"
+          "rawSql": "WITH sim AS (SELECT min(collected_at) AS first_at FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}), anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN ${inicio:sqlstring}::timestamptz ELSE first_at END AS start_at, CASE WHEN ${source:sqlstring}='physical' THEN ${fim:sqlstring}::timestamptz ELSE first_at+interval '30 days' END AS stop_at FROM sim), bounds AS (SELECT CASE WHEN ${period:sqlstring}='segunda_metade' THEN start_at+(stop_at-start_at)/2 ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira_metade' THEN start_at+(stop_at-start_at)/2 ELSE stop_at END AS end_at FROM anchor) SELECT e.occurred_at, c.payload->>'unit_id' AS vaso, c.payload->>'treatment' AS tratamento, e.payload->>'volume_ml' AS agua_ml, e.payload->>'energy_wh' AS energia_wh, e.payload->>'measurements_valid' AS medicao_valida, e.payload->>'reason' AS motivo FROM command_events e JOIN commands c USING(command_id) CROSS JOIN bounds WHERE c.source = ${source:sqlstring} AND c.payload->>'experiment_id' = ${experiment:sqlstring} AND e.status IN ('completed','failed') AND e.occurred_at>=begin_at AND e.occurred_at<end_at AND $__timeFilter(e.occurred_at) ORDER BY e.occurred_at DESC LIMIT 100"
         }
       ]
     },
@@ -354,7 +405,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "WITH anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN TIMESTAMPTZ '2026-11-01 00:00:00-03' ELSE (SELECT min(collected_at) FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}) END AS start_at), bounds AS (SELECT CASE WHEN ${period:sqlstring}='ultima15' THEN start_at+interval '15 days' ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira15' THEN start_at+interval '15 days' ELSE start_at+interval '30 days' END AS end_at FROM anchor) SELECT d.created_at, d.payload->>'reason' AS motivo, d.payload->>'actuate' AS irrigar, d.payload->>'prediction_id' AS previsao, d.payload->>'command_id' AS comando FROM decisions d JOIN telemetry t ON t.device_id=d.device_id AND t.message_id=(d.payload->>'telemetry_message_id')::uuid CROSS JOIN bounds WHERE t.source = ${source:sqlstring} AND t.experiment_id = ${experiment:sqlstring} AND d.created_at>=begin_at AND d.created_at<end_at AND $__timeFilter(d.created_at) ORDER BY d.created_at DESC LIMIT 100"
+          "rawSql": "WITH sim AS (SELECT min(collected_at) AS first_at FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}), anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN ${inicio:sqlstring}::timestamptz ELSE first_at END AS start_at, CASE WHEN ${source:sqlstring}='physical' THEN ${fim:sqlstring}::timestamptz ELSE first_at+interval '30 days' END AS stop_at FROM sim), bounds AS (SELECT CASE WHEN ${period:sqlstring}='segunda_metade' THEN start_at+(stop_at-start_at)/2 ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira_metade' THEN start_at+(stop_at-start_at)/2 ELSE stop_at END AS end_at FROM anchor) SELECT d.created_at, d.payload->>'reason' AS motivo, d.payload->>'actuate' AS irrigar, d.payload->>'prediction_id' AS previsao, d.payload->>'command_id' AS comando FROM decisions d JOIN telemetry t ON t.device_id=d.device_id AND t.message_id=(d.payload->>'telemetry_message_id')::uuid CROSS JOIN bounds WHERE t.source = ${source:sqlstring} AND t.experiment_id = ${experiment:sqlstring} AND d.created_at>=begin_at AND d.created_at<end_at AND $__timeFilter(d.created_at) ORDER BY d.created_at DESC LIMIT 100"
         }
       ]
     },
@@ -376,7 +427,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "WITH anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN TIMESTAMPTZ '2026-11-01 00:00:00-03' ELSE (SELECT min(collected_at) FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}) END AS start_at), bounds AS (SELECT CASE WHEN ${period:sqlstring}='ultima15' THEN start_at+interval '15 days' ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira15' THEN start_at+interval '15 days' ELSE start_at+interval '30 days' END AS end_at FROM anchor), cycles AS (SELECT e.command_id,e.occurred_at,c.payload->>'unit_id' AS unit_id,c.payload->>'treatment' AS treatment,e.payload FROM command_events e JOIN commands c USING(command_id) WHERE c.source=${source:sqlstring} AND c.payload->>'experiment_id'=${experiment:sqlstring} AND e.status IN ('completed','failed') UNION ALL SELECT command_id,occurred_at,payload->>'unit_id',payload->>'treatment',payload FROM local_cycle_events WHERE payload->>'source'=${source:sqlstring} AND payload->>'experiment_id'=${experiment:sqlstring} AND status IN ('completed','failed')) SELECT unit_id AS vaso,treatment AS tratamento,count(*) AS ciclos_com_resultado,count(*) FILTER(WHERE NOT coalesce((payload->>'measurements_valid')::boolean,false) OR payload->>'volume_ml' IS NULL OR payload->>'energy_wh' IS NULL) AS ciclos_sem_medicao,sum((payload->>'volume_ml')::float) FILTER(WHERE (payload->>'measurements_valid')::boolean) AS agua_valida_observada_ml,sum((payload->>'energy_wh')::float) FILTER(WHERE (payload->>'measurements_valid')::boolean) AS energia_valida_observada_wh FROM cycles,bounds WHERE occurred_at>=begin_at AND occurred_at<end_at AND $__timeFilter(occurred_at) GROUP BY unit_id,treatment ORDER BY treatment"
+          "rawSql": "WITH sim AS (SELECT min(collected_at) AS first_at FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}), anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN ${inicio:sqlstring}::timestamptz ELSE first_at END AS start_at, CASE WHEN ${source:sqlstring}='physical' THEN ${fim:sqlstring}::timestamptz ELSE first_at+interval '30 days' END AS stop_at FROM sim), bounds AS (SELECT CASE WHEN ${period:sqlstring}='segunda_metade' THEN start_at+(stop_at-start_at)/2 ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira_metade' THEN start_at+(stop_at-start_at)/2 ELSE stop_at END AS end_at FROM anchor), cycles AS (SELECT e.command_id,e.occurred_at,c.payload->>'unit_id' AS unit_id,c.payload->>'treatment' AS treatment,e.payload FROM command_events e JOIN commands c USING(command_id) WHERE c.source=${source:sqlstring} AND c.payload->>'experiment_id'=${experiment:sqlstring} AND e.status IN ('completed','failed') UNION ALL SELECT command_id,occurred_at,payload->>'unit_id',payload->>'treatment',payload FROM local_cycle_events WHERE payload->>'source'=${source:sqlstring} AND payload->>'experiment_id'=${experiment:sqlstring} AND status IN ('completed','failed')) SELECT unit_id AS vaso,treatment AS tratamento,count(*) AS ciclos_com_resultado,count(*) FILTER(WHERE NOT coalesce((payload->>'measurements_valid')::boolean,false) OR payload->>'volume_ml' IS NULL OR payload->>'energy_wh' IS NULL) AS ciclos_sem_medicao,sum((payload->>'volume_ml')::float) FILTER(WHERE (payload->>'measurements_valid')::boolean) AS agua_valida_observada_ml,sum((payload->>'energy_wh')::float) FILTER(WHERE (payload->>'measurements_valid')::boolean) AS energia_valida_observada_wh FROM cycles,bounds WHERE occurred_at>=begin_at AND occurred_at<end_at AND $__timeFilter(occurred_at) GROUP BY unit_id,treatment ORDER BY treatment"
         }
       ]
     },
@@ -398,7 +449,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "WITH anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN TIMESTAMPTZ '2026-11-01 00:00:00-03' ELSE (SELECT min(collected_at) FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}) END AS start_at), bounds AS (SELECT CASE WHEN ${period:sqlstring}='ultima15' THEN start_at+interval '15 days' ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira15' THEN start_at+interval '15 days' ELSE start_at+interval '30 days' END AS end_at FROM anchor) SELECT t.unit_id AS vaso,t.treatment AS tratamento,count(*) AS leituras,count(*) FILTER(WHERE sensor_valid) AS leituras_validas,count(DISTINCT floor(extract(epoch FROM(t.collected_at-b.begin_at))/60)) FILTER(WHERE sensor_valid) AS minutos_com_leitura_valida,100.0*count(*) FILTER(WHERE sensor_valid)/nullif(count(*),0) AS percentual_validas_observadas FROM telemetry t CROSS JOIN bounds b WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring} AND collected_at>=begin_at AND collected_at<end_at AND $__timeFilter(collected_at) GROUP BY t.unit_id,t.treatment ORDER BY t.treatment"
+          "rawSql": "WITH sim AS (SELECT min(collected_at) AS first_at FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}), anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN ${inicio:sqlstring}::timestamptz ELSE first_at END AS start_at, CASE WHEN ${source:sqlstring}='physical' THEN ${fim:sqlstring}::timestamptz ELSE first_at+interval '30 days' END AS stop_at FROM sim), bounds AS (SELECT CASE WHEN ${period:sqlstring}='segunda_metade' THEN start_at+(stop_at-start_at)/2 ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira_metade' THEN start_at+(stop_at-start_at)/2 ELSE stop_at END AS end_at FROM anchor) SELECT t.unit_id AS vaso,t.treatment AS tratamento,count(*) AS leituras,count(*) FILTER(WHERE sensor_valid) AS leituras_validas,count(DISTINCT floor(extract(epoch FROM(t.collected_at-b.begin_at))/60)) FILTER(WHERE sensor_valid) AS minutos_com_leitura_valida,100.0*count(*) FILTER(WHERE sensor_valid)/nullif(count(*),0) AS percentual_validas_observadas FROM telemetry t CROSS JOIN bounds b WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring} AND collected_at>=begin_at AND collected_at<end_at AND $__timeFilter(collected_at) GROUP BY t.unit_id,t.treatment ORDER BY t.treatment"
         }
       ]
     },
@@ -493,7 +544,7 @@
     {
       "id": 13,
       "type": "table",
-      "title": "T3: erro de seis horas — pares válidos e alvos ausentes",
+      "title": "T3: erro da previsão de 30 min — pares válidos e alvos ausentes",
       "gridPos": {
         "x": 0,
         "y": 97,
@@ -508,7 +559,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "WITH anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN TIMESTAMPTZ '2026-11-01 00:00:00-03' ELSE (SELECT min(collected_at) FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}) END AS start_at), bounds AS (SELECT CASE WHEN ${period:sqlstring}='ultima15' THEN start_at+interval '15 days' ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira15' THEN start_at+interval '15 days' ELSE start_at+interval '30 days' END AS end_at FROM anchor) SELECT base.unit_id AS vaso,p.payload->>'model_version' AS modelo,count(*) AS previsoes,count(obs.soil_index) AS pares_validos,count(*)-count(obs.soil_index) AS alvos_ausentes,avg(abs((p.payload->>'soil_index')::float-obs.soil_index)) AS mae,sqrt(avg(power((p.payload->>'soil_index')::float-obs.soil_index,2))) AS rmse,avg(abs(base.soil_index-obs.soil_index)) AS mae_persistencia FROM predictions p JOIN telemetry base ON base.device_id=p.device_id AND base.message_id=(p.payload->>'telemetry_message_id')::uuid CROSS JOIN bounds LEFT JOIN LATERAL(SELECT t.soil_index FROM telemetry t WHERE t.device_id=base.device_id AND t.unit_id=base.unit_id AND t.experiment_id=base.experiment_id AND t.source=base.source AND t.payload->>'calibration_id'=base.payload->>'calibration_id' AND t.sensor_valid AND t.collected_at>=base.collected_at+interval '6 hours' AND t.collected_at<=base.collected_at+interval '6 hours 1 minute' AND t.collected_at<bounds.end_at ORDER BY t.collected_at LIMIT 1) obs ON true WHERE base.source=${source:sqlstring} AND base.experiment_id=${experiment:sqlstring} AND base.treatment='T3' AND base.collected_at>=begin_at AND base.collected_at<end_at AND $__timeFilter(base.collected_at) GROUP BY base.unit_id,p.payload->>'model_version' ORDER BY base.unit_id"
+          "rawSql": "WITH sim AS (SELECT min(collected_at) AS first_at FROM telemetry WHERE source=${source:sqlstring} AND experiment_id=${experiment:sqlstring}), anchor AS (SELECT CASE WHEN ${source:sqlstring}='physical' THEN ${inicio:sqlstring}::timestamptz ELSE first_at END AS start_at, CASE WHEN ${source:sqlstring}='physical' THEN ${fim:sqlstring}::timestamptz ELSE first_at+interval '30 days' END AS stop_at FROM sim), bounds AS (SELECT CASE WHEN ${period:sqlstring}='segunda_metade' THEN start_at+(stop_at-start_at)/2 ELSE start_at END AS begin_at, CASE WHEN ${period:sqlstring}='primeira_metade' THEN start_at+(stop_at-start_at)/2 ELSE stop_at END AS end_at FROM anchor) SELECT base.unit_id AS vaso,p.payload->>'model_version' AS modelo,count(*) AS previsoes,count(obs.soil_index) AS pares_validos,count(*)-count(obs.soil_index) AS alvos_ausentes,avg(abs((p.payload->>'soil_index')::float-obs.soil_index)) AS mae,sqrt(avg(power((p.payload->>'soil_index')::float-obs.soil_index,2))) AS rmse,avg(abs(base.soil_index-obs.soil_index)) AS mae_persistencia FROM predictions p JOIN telemetry base ON base.device_id=p.device_id AND base.message_id=(p.payload->>'telemetry_message_id')::uuid CROSS JOIN bounds LEFT JOIN LATERAL(SELECT t.soil_index FROM telemetry t WHERE t.device_id=base.device_id AND t.unit_id=base.unit_id AND t.experiment_id=base.experiment_id AND t.source=base.source AND t.payload->>'calibration_id'=base.payload->>'calibration_id' AND t.sensor_valid AND t.collected_at>=base.collected_at+interval '30 minutes' AND t.collected_at<=base.collected_at+interval '31 minutes' AND t.collected_at<bounds.end_at ORDER BY t.collected_at LIMIT 1) obs ON true WHERE base.source=${source:sqlstring} AND base.experiment_id=${experiment:sqlstring} AND base.treatment='T3' AND base.collected_at>=begin_at AND base.collected_at<end_at AND $__timeFilter(base.collected_at) GROUP BY base.unit_id,p.payload->>'model_version' ORDER BY base.unit_id"
         }
       ]
     }

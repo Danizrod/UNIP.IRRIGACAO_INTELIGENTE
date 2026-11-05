@@ -56,7 +56,7 @@ def main():
             prediction=dict(prediction_id=str(uuid4()),device_id='sim-01',
                             telemetry_message_id=latest['sim-pot-03']['message_id'],source='simulation',
                             predicted_at=now.isoformat(),valid_until=(now+timedelta(seconds=30)).isoformat(),
-                            horizon_s=21600,soil_index=20,model_version='sim-three-fixture-not-trained')
+                            horizon_s=1800,soil_index=20,model_version='sim-three-fixture-not-trained')
             api.post('/predictions',json=prediction).raise_for_status()
             commands=[]
             for config in [configs[2],configs[0],configs[1]]:

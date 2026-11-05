@@ -1,6 +1,9 @@
 """Avaliação automática opcional, exclusivamente para dispositivos simulados."""
+import json
 import logging
+import os
 import time
+from datetime import datetime, timezone
 from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import HTTPException
@@ -11,6 +14,7 @@ from app.store import connect, evaluate
 
 log = logging.getLogger('control')
 scan_offset=0
+HEARTBEAT_S = 15  # Firmware treats >90 s without heartbeat as decision service offline.
 
 
 def tick_once():
@@ -44,11 +48,34 @@ def tick_once():
     return count
 
 
+def heartbeat_devices():
+    with connect() as conn:
+        rows = conn.execute("SELECT DISTINCT device_id FROM control_configs WHERE (payload->>'enabled')::boolean").fetchall()
+    return [row['device_id'] for row in rows]
+
+
+def publish_heartbeats(client, devices):
+    sent_at = datetime.now(timezone.utc).isoformat()
+    for device in devices:
+        client.publish(f'irrigation/v1/{device}/heartbeat', json.dumps({'schema_version': 1, 'sent_at': sent_at}), qos=0, retain=False)
+
+
 if __name__ == '__main__':
+    from app.worker import make_client
     logging.basicConfig(level=logging.INFO)
+    client = make_client(client_id='tcc-controller-v1')
+    client.on_message = None
+    client.on_connect = None
+    client.connect(os.environ.get('MQTT_HOST', 'mosquitto'), 8883, keepalive=30)
+    client.loop_start()
+    last_heartbeat = 0.0
     while True:
         try:
             tick_once()
+            # Only a loop that just reached the database advertises liveness.
+            if time.monotonic() - last_heartbeat >= HEARTBEAT_S:
+                publish_heartbeats(client, heartbeat_devices())
+                last_heartbeat = time.monotonic()
         except Exception:
             log.exception('Avaliação falhou; nenhum comando é presumido como executado')
         time.sleep(2)

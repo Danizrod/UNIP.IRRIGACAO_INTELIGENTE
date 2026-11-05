@@ -6,3 +6,4 @@ paho-mqtt==2.1.0
 httpx>=0.28,<1
 pandas>=2.2,<4
 scikit-learn>=1.6,<2
+xgboost-cpu>=3.0,<4

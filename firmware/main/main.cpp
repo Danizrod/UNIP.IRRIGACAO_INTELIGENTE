@@ -97,6 +97,11 @@ static int64_t telemetry_period_s=60;
 [[maybe_unused]] static double shared_removed_ml=0;
 static bool connected=false;
 static bool subscribed=false;
+// Remote mode needs the decision service alive, not only the broker: without a heartbeat
+// for heartbeat_timeout_ms the device falls back to local hysteresis (pre-project contingency).
+static constexpr int64_t heartbeat_timeout_ms=90000;
+static int64_t heartbeat_ms=-1;
+static bool backend_online=false;
 static std::atomic<bool> utc_synced{false};
 static void clock_synced(timeval*){utc_synced.store(true);}
 static int in_flight=-1;
@@ -190,15 +195,18 @@ static void acknowledge_message(){
 static void mqtt_event(void*,esp_event_base_t,int32_t id,void*data){
  xSemaphoreTake(mutex,portMAX_DELAY);
  auto e=static_cast<esp_mqtt_event_handle_t>(data);
- if(id==MQTT_EVENT_CONNECTED){connected=true;controller->connectivity(true);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/commands").c_str(),1);
+ if(id==MQTT_EVENT_CONNECTED){connected=true;esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/commands").c_str(),1);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/heartbeat").c_str(),0);
   // Main loop opens the remote barrier only after subscription/clock/backlog checks.
- }else if(id==MQTT_EVENT_DISCONNECTED){connected=false;subscribed=false;controller->connectivity(false);}
+ }else if(id==MQTT_EVENT_DISCONNECTED){connected=false;subscribed=false;backend_online=false;heartbeat_ms=-1;controller->connectivity(false);}
  else if(id==MQTT_EVENT_SUBSCRIBED){subscribed=true;}
  else if(id==MQTT_EVENT_PUBLISHED){if(in_flight==-2)early_ack=e->msg_id;else if(e->msg_id==in_flight)acknowledge_message();}
  else if(id==MQTT_EVENT_DELETED){if(in_flight==-2)early_deleted=e->msg_id;else if(e->msg_id==in_flight)in_flight=-1;}
  else if(id==MQTT_EVENT_DATA){
   if(e->total_data_len!=e->data_len||e->current_data_offset||e->data_len>2048){xSemaphoreGive(mutex);return;}
-  if(std::string(e->topic,e->topic_len)!="irrigation/v1/"+device+"/commands"){xSemaphoreGive(mutex);return;}
+  std::string topic(e->topic,e->topic_len);
+  // Arrival time only (monotonic clock); payload content is not trusted for liveness.
+  if(topic=="irrigation/v1/"+device+"/heartbeat"){heartbeat_ms=esp_timer_get_time()/1000;xSemaphoreGive(mutex);return;}
+  if(topic!="irrigation/v1/"+device+"/commands"){xSemaphoreGive(mutex);return;}
   auto j=cJSON_ParseWithLength(e->data,e->data_len);if(!j){xSemaphoreGive(mutex);return;}
   auto cid=str(j,"command_id"),dev=str(j,"device_id"),source=str(j,"source");
   auto experiment=str(j,"experiment_id"),unit=str(j,"unit_id"),treatment=str(j,"treatment"),reason=str(j,"reason");
@@ -299,6 +307,9 @@ extern "C" void app_main(){
  for(;;){if(mqtt&&!mqtt_started&&utc_synced.load()&&epoch()>1700000000){mqtt_started=esp_mqtt_client_start(mqtt)==ESP_OK;}
   std::string publish_topic,publish_payload;
   xSemaphoreTake(mutex,portMAX_DELAY);
+  {int64_t now_ms=esp_timer_get_time()/1000;
+   bool alive=connected&&subscribed&&heartbeat_ms>=0&&now_ms-heartbeat_ms<=heartbeat_timeout_ms;
+   if(alive!=backend_online){backend_online=alive;controller->connectivity(alive);ESP_LOGW(TAG,"Decision service %s",alive?"online":"offline: local fallback");}}
 #if CONFIG_IRRIGATION_SIMULATION
   if(utc_synced.load())controller->advance(epoch());
   if(pump.channel>=0){shared_removed_ml+=1;auto&s=sensors[pump.channel];s.soil=s.soil<99?s.soil+1:100;} // Synthetic flow/response only.

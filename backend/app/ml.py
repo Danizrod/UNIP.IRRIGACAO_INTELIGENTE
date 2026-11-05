@@ -5,9 +5,11 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import struct
 
 FEATURES = ['soil_index', 'temperature_c', 'humidity_pct', 'hour_sin', 'hour_cos']
-HORIZON_S = 21600
+# Pre-project: 30-minute prediction (confirm in the pilot). Changing it invalidates artifacts.
+HORIZON_S = 1800
 
 
 def features(item):
@@ -43,12 +45,49 @@ def export_estimator(model, kind):
                     coef=ridge.coef_.tolist(), intercept=float(ridge.intercept_))
     if kind == 'random_forest':
         return dict(kind=kind, trees=[export_tree(t) for t in model.estimators_])
+    if kind == 'xgboost':
+        return export_xgboost(model)
     return dict(kind='gradient_boosting', initial=float(model.init_.constant_[0, 0]),
                 learning_rate=float(model.learning_rate),
                 trees=[export_tree(t[0]) for t in model.estimators_])
 
 
-def tree_predict(tree, values):
+def float32(value):
+    return struct.unpack('f', struct.pack('f', value))[0]
+
+
+def export_xgboost(model):
+    """Flatten XGBoost JSON dumps into the same node arrays; splits are `x < threshold` in float32."""
+    trees = []
+    for dump in model.get_booster().get_dump(dump_format='json'):
+        nodes = {}
+        pending = [json.loads(dump)]
+        while pending:
+            node = pending.pop()
+            nodes[node['nodeid']] = node
+            pending.extend(node.get('children', []))
+        size = max(nodes) + 1
+        if sorted(nodes) != list(range(size)):
+            raise ValueError('Árvore XGBoost com nós ausentes')
+        tree = dict(left=[-1] * size, right=[-1] * size, feature=[-2] * size, threshold=[0.0] * size, value=[0.0] * size)
+        for nodeid, node in nodes.items():
+            if 'leaf' in node:
+                tree['value'][nodeid] = float(node['leaf'])
+                continue
+            if node['missing'] != node['yes']:
+                raise ValueError('Ramo de ausentes não suportado')
+            tree['left'][nodeid], tree['right'][nodeid] = node['yes'], node['no']
+            tree['feature'][nodeid] = int(node['split'].lstrip('f'))
+            tree['threshold'][nodeid] = float(node['split_condition'])
+        trees.append(tree)
+    # Base margin derived from the fitted model so it does not depend on version-specific config text.
+    import numpy as np
+    probe = np.zeros((1, model.n_features_in_), dtype=np.float32)
+    leaves = sum(tree_predict(t, probe[0].tolist(), strict=True) for t in trees)
+    return dict(kind='xgboost', base=float(model.predict(probe)[0]) - leaves, trees=trees)
+
+
+def tree_predict(tree, values, strict=False):
     lengths = [len(tree[k]) for k in ('left', 'right', 'feature', 'threshold', 'value')]
     if len(set(lengths)) != 1 or not 0 < lengths[0] <= 100000:
         raise ValueError('Árvore inválida')
@@ -63,7 +102,11 @@ def tree_predict(tree, values):
         feature = tree['feature'][index]
         if not isinstance(feature, int) or not 0 <= feature < len(values):
             raise ValueError('Atributo de árvore inválido')
-        index = tree['left'][index] if values[feature] <= tree['threshold'][index] else tree['right'][index]
+        if strict:
+            go_left = float32(values[feature]) < float32(tree['threshold'][index])
+        else:
+            go_left = values[feature] <= tree['threshold'][index]
+        index = tree['left'][index] if go_left else tree['right'][index]
     raise ValueError('Árvore cíclica')
 
 
@@ -80,11 +123,13 @@ def estimate(estimator, values):
         trees = estimator['trees']
         if not 0 < len(trees) <= 1000:
             raise ValueError('Ensemble inválido')
-        output = [tree_predict(t, values) for t in trees]
+        output = [tree_predict(t, values, strict=kind == 'xgboost') for t in trees]
         if kind == 'random_forest':
             result = sum(output) / len(output)
         elif kind == 'gradient_boosting':
             result = estimator['initial'] + estimator['learning_rate'] * sum(output)
+        elif kind == 'xgboost':
+            result = estimator['base'] + sum(output)
         else:
             raise ValueError('Modelo não suportado')
     if not math.isfinite(result):
@@ -184,6 +229,7 @@ def splits(rows, n_splits=3):
 def train(path, output, source='physical', allow_simulation=False):
     import numpy as np
     import sklearn
+    import xgboost
     from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
     from sklearn.linear_model import Ridge
     from sklearn.pipeline import Pipeline
@@ -199,6 +245,9 @@ def train(path, output, source='physical', allow_simulation=False):
         'ridge': lambda: Pipeline([('scale', StandardScaler()), ('ridge', Ridge(alpha=1.0))]),
         'random_forest': lambda: RandomForestRegressor(n_estimators=30, max_depth=5, random_state=17, n_jobs=1),
         'gradient_boosting': lambda: GradientBoostingRegressor(n_estimators=30, max_depth=2, random_state=17),
+        # Requested by the pre-project; deterministic single-thread fit for reproducibility.
+        'xgboost': lambda: xgboost.XGBRegressor(n_estimators=30, max_depth=2, learning_rate=0.1,
+                                                random_state=17, n_jobs=1, tree_method='exact'),
     }
     X = np.array(selection.x.tolist())
     y = selection.y.to_numpy()
@@ -221,7 +270,7 @@ def train(path, output, source='physical', allow_simulation=False):
     first = frame.iloc[0]
     body = dict(schema_version=1, source=source, device_id=str(first.device_id), unit_id=str(first.unit_id),
                 calibration_id=str(first.calibration_id), horizon_s=HORIZON_S, features=FEATURES,
-                created_at=datetime.now(timezone.utc).isoformat(), sklearn_version=sklearn.__version__,
+                created_at=datetime.now(timezone.utc).isoformat(), sklearn_version=sklearn.__version__, xgboost_version=xgboost.__version__,
                 target_semantics='umidade observada sob a política coletada; não cenário sem irrigação',
                 deployment_approved=False, estimator=export_estimator(model, winner),
                 validation=metrics, test=final, persistence_test=baseline,
