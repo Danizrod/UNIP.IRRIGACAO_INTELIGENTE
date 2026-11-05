@@ -15,20 +15,20 @@
         "name": "source",
         "label": "Origem dos dados",
         "type": "custom",
-        "query": "simulation,physical",
+        "query": "physical,simulation",
         "current": {
-          "text": "simulation",
-          "value": "simulation"
+          "text": "physical",
+          "value": "physical"
         },
         "options": [
           {
-            "text": "simulation",
-            "value": "simulation",
+            "text": "physical",
+            "value": "physical",
             "selected": true
           },
           {
-            "text": "physical",
-            "value": "physical",
+            "text": "simulation",
+            "value": "simulation",
             "selected": false
           }
         ]
@@ -44,8 +44,8 @@
         "query": "SELECT DISTINCT experiment_id AS __text, experiment_id AS __value FROM telemetry WHERE source = ${source:sqlstring} ORDER BY 1",
         "refresh": 1,
         "current": {
-          "text": "sim-integration",
-          "value": "sim-integration"
+          "text": "tcc-2026",
+          "value": "tcc-2026"
         }
       },
       {
