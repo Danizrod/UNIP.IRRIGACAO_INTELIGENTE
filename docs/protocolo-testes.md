@@ -63,6 +63,8 @@ Grafana centraliza linhas de solo por vaso/tratamento, comandos, ciclos, decisõ
 
 ## Calendário e início
 
+**Decisão do usuário em 04/11/2026:** a entrega permanece em 01/12/2026 e a comparação T1/T2/T3 roda pelos dias disponíveis após validação da bancada e piloto, menos que 30 dias. Duração real, início e fim devem ser registrados; a análise usa a janela comum válida e divide em duas metades (não quinzenas fixas), que continuam não sendo réplicas. Modelo de T3 treinado com piloto curto: registrar essa limitação. Os itens abaixo descrevem o plano original.
+
 - Até 31/10: componentes, montagem, calibração, coleta piloto, modelo e testes físicos aprovados. Software sem drivers físicos não significa bancada concluída.
 - Ensaio: **01/11/2026 00:00 a 01/12/2026 00:00**, horário de São Paulo — 30 dias completos. Usar intervalo fechado no início e aberto no fim; definir esses limites explicitamente na análise.
 - Durante novembro: backups, inspeção diária, gráficos e análise incremental; congelar a coleta só no fim. Entrega em 01/12 deixa poucas horas para fechamento. Modelo T3 precisa existir antes de novembro; treinamento em novembro não substitui 30 dias de avaliação de um modelo congelado.
