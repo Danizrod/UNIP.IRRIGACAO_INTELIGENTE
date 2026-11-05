@@ -18,10 +18,10 @@ Credenciais em `.env`, certificados em `.local/certs`, dados/modelos locais fora
 | --- | --- |
 | API | http://127.0.0.1:8000/docs — Bearer API_TOKEN |
 | Grafana | http://127.0.0.1:3000/d/tcc-ingestion — admin/GRAFANA_ADMIN_PASSWORD |
-| MQTT | localhost:8883 — TLS, autenticação e ACL por dispositivo |
+| MQTT | porta 8883 na rede local (ESP32) — TLS, autenticação e ACL por dispositivo |
 | PostgreSQL | Rede Docker, sem porta publicada |
 
-Para o ESP32 real, provisionar identidade, ACL e certificado para o endereço do notebook. Não desabilitar TLS. Não remover volumes para reiniciar.
+ESP32 real: ver [ESP32 na rede](#esp32-na-rede-bancada-física). Não desabilitar TLS. Não remover volumes para reiniciar.
 
 ## Verificar software
 
@@ -46,13 +46,13 @@ docker compose --profile simulation run --rm simulator python -m app.ml /data/ra
 docker compose --profile simulation run --rm simulator python ml_integration_check.py
 ```
 
-Pipeline compara Ridge, Random Forest, Gradient Boosting e persistência. Separação temporal com expurgo dos alvos de seis horas; modelo JSON versionado, sem carregar pickle. Dados sintéticos verificam integração, não desempenho agronômico. Treinamento físico exige dados preliminares, calibração consistente e revisão antes de aprovação. Alvo é solo observado sob a política coletada, não previsão contrafactual sem irrigação.
+Pipeline compara Ridge, Random Forest, Gradient Boosting, XGBoost e persistência. Horizonte de 30 min (pré-projeto; confirmar no piloto). Separação temporal com expurgo dos alvos; modelo JSON versionado, sem carregar pickle. Dados sintéticos verificam integração, não desempenho agronômico. Treinamento físico exige dados preliminares, calibração consistente e revisão antes de aprovação. Alvo é solo observado sob a política coletada, não previsão contrafactual sem irrigação.
 
 Para demonstração contínua: `docker compose --profile simulation run --rm simulator python simulate.py --loop --seconds 120 --state /state/device.json --treatment T2`. Configurar `/control/config` pela API com limites explícitos **simulados**. Serviço opcional `docker compose --profile control up -d controller` avalia novas leituras; configuração desabilitada por padrão. Desligar após demonstração com `docker compose --profile control stop controller`.
 
 Para três vasos, usar `simulate.py --loop --seconds 120 --three-units --state /state/three-units.json`. Criar três configurações no mesmo dispositivo/experimento, com unidades distintas e T1/T2/T3 fixos. `/control/evaluate` exige `unit_id` e `experiment_id` quando há múltiplos contextos. `stabilization_s` depende do piloto, não de valores sintéticos. Configurar `model_path` do vaso T3 para artefato compatível; exportar treino com `tools/export_telemetry.py ... --unit-id ID`. A fila revalida leitura/previsão antes de publicar e aguarda resultado terminal; falta de confirmação não libera outro ciclo.
 
-Grafana tem seletor de período total30/primeira15/ultima15, linhas por vaso, consumo válido observado, qualidade, ciclos locais, intervenções, rejeições e MAE/RMSE pareados de seis horas. Quinzenas não são réplicas. A janela física segue o protocolo aprovado e o seletor de tempo limita as consultas; para ver novembro inteiro selecionar 01/11 a 01/12. Fonte simulation serve somente à verificação técnica.
+Grafana tem seção ao vivo (idade da última mensagem, ADC bruto do solo, balança, DHT22), seletor total/primeira_metade/segunda_metade, linhas por vaso, consumo válido observado, qualidade, ciclos locais, intervenções, rejeições e MAE/RMSE pareados de 30 min. Metades não são réplicas. A janela física vem das variáveis `inicio`/`fim` do painel: ajustar ao iniciar o ensaio. O seletor de tempo também limita as consultas. Fonte simulation serve somente à verificação técnica.
 
 Intervenções: `/interventions` registra início/fim, tipo, contexto, motivo e responsável opcional. Início suspende publicação no dispositivo; alterações durante ciclo invalidam as medições afetadas. Relatório: `docker compose --profile simulation run --rm simulator python tools/experiment_analysis.py --plan /app/config/experiment.json --output /data/processed/resultado.json`. A configuração de referência contém IDs que devem corresponder à bancada. Não sobrescreve arquivo existente; relatório vazio/sem cobertura não inventa economia nem consumo zero.
 
@@ -64,7 +64,7 @@ Contrato em `backend/app/contracts.py`; decisões, previsões, comandos, eventos
 
 `docker compose --profile backup up -d backup` agenda dump diário enquanto Docker estiver ativo. Copiar para local adicional e configurar notebook definitivo. Backup no mesmo equipamento não protege contra sua perda.
 
-[Firmware](../firmware/README.md): drivers, pinagem e provisionamento físico pendentes. Journal limitado reutiliza slots após expiração segura; relógio regressivo e falhas de armazenamento bloqueiam atuação. Eventos têm fila persistente separada de 32 registros; telemetria continua volátil. Validar NVS, desgaste e cortes de energia na placa. Um ciclo interrompido pode exigir reconciliação do estado no backend, sem inventar conclusão ou consumo.
+[Firmware](../firmware/README.md): drivers de sensores implementados; atuação física bloqueada. Journal limitado reutiliza slots após expiração segura; relógio regressivo e falhas de armazenamento bloqueiam atuação. Eventos têm fila persistente separada de 32 registros; telemetria continua volátil. Validar NVS, desgaste e cortes de energia na placa. Um ciclo interrompido pode exigir reconciliação do estado no backend, sem inventar conclusão ou consumo.
 
 ## Preparar provisionamento do ESP32
 
@@ -82,3 +82,14 @@ Antes de mudar identidade ou contexto de um dispositivo já usado, drenar/reconc
 Imagem destinada **somente à partição `provision`** de `firmware/partitions.csv`. Conferir capacidade real e compatibilidade antes de gravar: offsets novos não migram históricos do mapa anterior. Não apagar/sobrescrever `nvs`, `journal` ou `events`. Não há flash automático, eFuses ou alteração do broker. Revisar endereço, SAN do certificado, CA e ACL; ensaio na placa ainda pendente. Gerador oficial ESP-IDF 5.5.1 verificado com credenciais sintéticas: imagem de 65.536 bytes e sete testes unitários aprovados. [Gerador oficial NVS](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/api-reference/storage/nvs_partition_gen.html).
 
 O formato legado com apenas `unit` continua aceito para artefatos antigos; o firmware de três canais exige `unit1/unit2/unit3`. Não fornecer um mapa parcial. A imagem usa offset/tamanho lidos da tabela atual, sem assumir o mapa anterior: `journal` 0x190000, `events` 0x1a0000 e `provision` 0x1b0000, após aplicação de 1,5 MiB. A capacidade de 2 MiB ou maior e a compatibilidade da tabela/firmware precisam ser conferidas na placa antes de gravar.
+
+## ESP32 na rede (bancada física)
+
+O ESP32 publica pelo Wi-Fi no broker do notebook; o notebook fica ligado com Docker ativo durante o ensaio.
+
+1. Certificado com o IP do notebook: `python tools/rotate-broker-cert.py --ip 192.168.15.35 --dns DANILO-PC`. Arquiva os certificados anteriores, guarda `ca.key` em `.local/certs` e cria `MQTT_DEVICE_PASSWORD` no `.env`. Se o IP mudar, usar `--server-only` com o novo IP e reprovisionar só o endereço do broker. **Recomendado: reservar o IP do notebook (DHCP) no roteador.**
+2. `docker compose up -d --build`; a porta 8883 fica aberta na rede local (demais serviços só em 127.0.0.1). Se o Windows bloquear a conexão do ESP32, o usuário libera a porta TCP 8883 no Firewall do Windows (rede privada).
+3. Provisionamento físico em `.local` (Wi-Fi, broker, CA, `esp32-01`, unidades `pot-01..03`) e chaves opcionais de calibração: `scale_cal`, `scale_offset`, `scale_factor`, `soil_cal`, `dry1..3`, `wet1..3`, `ina1..3`, `telemetry_s`. Gerar o binário no contêiner ESP-IDF: `docker run --rm -v <repo>:/src -w /src espressif/idf:v5.5.1 python tools/provision-device.py --settings .local/provision-esp32-01/settings.json --output .local/provision-esp32-01/nvs --mode physical --idf-path /opt/esp/idf`.
+4. Compilar: `docker run --rm -v <repo>/firmware:/project -w /project espressif/idf:v5.5.1 idf.py -D SDKCONFIG=/project/build/sdkconfig build`.
+5. Gravar (migra do sketch Arduino; exige backup completo verificado): `python tools/flash_firmware.py --provision .local/provision-esp32-01/nvs --backup-manifest .local/backups/esp32-com5-20261104-fator20/manifest.json` com `PYTHONPATH=.local/bench-tools/python`. Apaga só NVS/PHY e journal/events/provision, grava e mostra 60 s de serial. Voltar ao sketch: regravar `flash-4mb.bin` do backup.
+6. Conferir no Grafana (origem `physical`, experimento `tcc-2026`) a seção ao vivo. Telemetria a cada 60 s; até ~40 min ficam em RAM durante queda de rede.

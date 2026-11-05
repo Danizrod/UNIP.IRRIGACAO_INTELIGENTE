@@ -1,6 +1,6 @@
 # Firmware preparado para três unidades
 
-Projeto ESP-IDF para um ESP32 e três canais, com mapa de GPIOs documentado e sem drivers de acionamento físico integrados. Todos os canais ficam desligados no boot; sensores e calibração inválidos impedem atuação. Não gravar como firmware funcional de bancada. `IRRIGATION_PHYSICAL_ENABLED` falha a compilação propositalmente até revisão dos drivers.
+Projeto ESP-IDF para um ESP32 e três canais. Drivers de **sensores** implementados (`main/hardware.cpp`): HX711 (mediana de 10 amostras, sem autozero/zona morta), INA3221 (identidade conferida a cada leitura; leituras corrompidas descartadas), solo ADC1 GPIO32/33/34 e DHT22. Saídas GPIO25/26/27 ficam LOW no boot; não há driver de bomba. `IRRIGATION_PHYSICAL_ENABLED` falha a compilação propositalmente até validação do circuito de potência.
 
 ## Compilar
 
@@ -49,3 +49,11 @@ Identificação visual dos três bornes concluída pelo usuário em 01/11/2026: 
 ## Diagnóstico isolado da pesagem
 
 `diagnostics/hx711_drift/hx711_drift.ino`: sketch Arduino separado, sem Wi-Fi, DHT, INA ou alternância de saídas (GPIO25/26/27 em LOW). Lê o fator da EEPROM (512 bytes, endereço 0) sem gravar; sem tara no boot, média extra, zona morta ou autozero. Estabiliza 3 s por diferença de tempo com `update()` contínuo; `TARA` pela serial faz uma tara não bloqueante com prazo. Saída CSV a cada 1 s com uptime, estado, idade da amostra, amostras no intervalo, contagens e gramas da média móvel da biblioteca (não ADC bruto), offset e timeout. Biblioteca HX711_ADC 1.2.12 (config padrão, 16 amostras), instalada em `.local/`. Registro: `tools/hx711_serial_log.py --port COM5 --output data/raw/<novo>.log` (uma `TARA` após 180 s). Gravar só em app0 com backup verificado e restaurar o app0 do backup ao terminar.
+
+## Telemetria física (05/11/2026)
+
+Uma mensagem por vaso a cada `telemetry_s` (padrão 60 s) após UTC/SNTP: ADC bruto do solo, índice apenas se `soil_cal`/`dryN`/`wetN` existirem, DHT22, massa da balança (contagens HX711 + `scale_cal`/`scale_offset`/`scale_factor`, sinal preservado), `mass_stable` (amplitude da janela ≤ 5 g, provisório) e INA3221 só para vasos com `inaN` mapeado. Leituras comuns (balança, DHT) repetem-se em cada vaso e não são medições independentes. Sem calibração: valores null, nunca padrões. Associação vaso↔sensor provisória: unidade 1/2/3 = GPIO32/33/34 (sensores B/A/C). `limits` permanece não calibrado, então nenhum comando aciona saída.
+
+Contingência: modo remoto exige MQTT conectado **e** heartbeat do serviço de controle (a cada 15 s); sem heartbeat por 90 s o firmware usa a histerese local, mesmo com broker ativo. Retomada continua exigindo a barreira de sincronização. Fila de telemetria em RAM: 120 mensagens (~40 min a 3 vasos/min); perdas contabilizadas no log.
+
+Compilação via Docker (`espressif/idf:v5.5.1`), flash de 4 MB configurado. Gravação e migração do mapa Arduino: `tools/flash_firmware.py` (ver [ambiente local](../docs/ambiente-local.md#esp32-na-rede-bancada-física)). Teste portátil novo: `tests/sensor_math_test.cpp`.

@@ -17,7 +17,8 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 
 - [x] Preparar backend, PostgreSQL, MQTT/TLS e Grafana.
 - [x] Verificar ingestão e persistência com dados simulados.
-- [ ] Preparar notebook definitivo, ESP-IDF, identidade do dispositivo e acesso pela rede.
+- [x] Preparar ESP-IDF (Docker), identidade `esp32-01`, certificado com IP do notebook e broker na rede local (05/11).
+- [ ] Reservar IP do notebook no roteador e confirmar acesso do ESP32 pelo firewall.
 - [x] Implementar backup e verificar restauração em banco temporário isolado.
 - [x] Preparar serviço de backup diário enquanto Docker estiver ativo.
 - [ ] Configurar backup e cópia adicional no notebook definitivo.
@@ -39,7 +40,8 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 - [x] Revisar sketch web e exemplo serial de pesagem; registrar filtros, bloqueios e ressalvas da biblioteca.
 - [x] Fazer novo backup com fator 20,00 e executar diagnóstico isolado de deriva (04/11: ±6 g/15 min após boot nos dois programas; causa da deriva longa não isolada).
 - [ ] Registrar deriva longa com temperatura junto ao HX711 e testar massa conhecida por tempo de ciclo antes de aprovar a pesagem.
-- [ ] Integrar drivers físicos ao ESP-IDF e levar leituras calibradas ao Grafana.
+- [x] Implementar drivers de sensores no ESP-IDF e painel ao vivo no Grafana (05/11; compilado, gravação pendente).
+- [ ] Gravar firmware na placa e confirmar telemetria física no banco/Grafana.
 - [ ] Replanejar início/fim dos 30 dias após preparação; testes com LED não contam como ensaio.
 
 ## Firmware e controle
@@ -60,7 +62,7 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 
 Os itens seguintes exigem integração/validação com os componentes físicos:
 
-- [ ] Implementar sensores e telemetria com identificação, calibração e horário.
+- [ ] Implementar sensores e telemetria com identificação, calibração e horário (drivers prontos; calibrações pendentes).
 - [ ] Implementar comandos, validade, deduplicação e confirmação de execução.
 - [ ] Implementar desligamento no boot, watchdog e bloqueios de segurança.
 - [ ] Implementar buffer, reenvio, contingência por histerese e retomada sincronizada.
@@ -77,9 +79,9 @@ Os itens seguintes exigem integração/validação com os componentes físicos:
 Os itens seguintes dependem de dados físicos e do protocolo:
 
 - [ ] Coletar dados físicos preliminares e registrar intervenções/reposições.
-- [ ] Definir atributos, alvo de seis horas e uso de meteorologia aplicável à bancada.
+- [ ] Definir atributos, alvo de 30 min (código alinhado em 05/11) e uso de meteorologia aplicável à bancada.
 - [ ] Separar treino, validação e teste temporal sem vazamento de dados.
-- [ ] Comparar três algoritmos candidatos e previsão de persistência; avaliar MAE/RMSE.
+- [ ] Comparar Ridge, Random Forest, Gradient Boosting e XGBoost com persistência; avaliar MAE/RMSE (pipeline pronto).
 - [ ] Versionar modelo e integrar inferência, separada do treinamento.
 - [ ] Congelar modelo, parâmetros e protocolo antes da comparação.
 
