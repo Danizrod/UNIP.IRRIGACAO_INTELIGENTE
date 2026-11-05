@@ -31,6 +31,8 @@ class Telemetry(BaseModel):
     firmware_version: str | None = Field(default=None, max_length=40)
     scale_counts: int | None = Field(default=None, ge=0, le=0xFFFFFF, strict=True)
     mass_stable: bool | None = None
+    # Raw-sample span of the ~1 s scale window, in grams (diagnostic for the stability threshold).
+    scale_span_g: float | None = Field(default=None, ge=0, le=5000)
     scale_calibration_id: str | None = Field(default=None, min_length=1, max_length=80)
     ina_channel: int | None = Field(default=None, ge=1, le=3, strict=True)
 

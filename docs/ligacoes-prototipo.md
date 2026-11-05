@@ -116,3 +116,17 @@ Leitura: logo após o boot, os dois programas ficaram dentro de cerca de ±6 g e
 Próximo passo: registro longo (1–2 h ou noturno) com o DHT22 junto ao HX711/sensores e notebook afastado, para relacionar deriva e temperatura; depois, massa conhecida estável por tempo equivalente a um ciclo (fluência sob carga). A pesagem segue não validada.
 
 Fontes: [implementação HX711_ADC](https://github.com/olkal/HX711_ADC/blob/master/src/HX711_ADC.cpp), [API](https://github.com/olkal/HX711_ADC/blob/master/src/HX711_ADC.h), [configuração](https://github.com/olkal/HX711_ADC/blob/master/src/config.h). O código consultado não comprova a versão instalada no firmware original.
+
+### Registro noturno sem carga (04–05/11/2026)
+
+Sketch web original, plataforma vazia, DHT22 ao lado do HX711, leitura a cada 30 s por 8,3 h (`data/raw/deriva-noturna-20261104.jsonl`; `-parte2` é cópia simultânea do mesmo período; fora do Git, `trial_eligible=false`). Peso foi de −13,7 g a −176,1 g (mín. −183,9 g); temperatura do ar caiu de 29–30 °C para 22,5–23,5 °C por volta das 23h–0h (horário local). Correlação peso × temperatura 0,97, inclinação ~20 g/°C; com temperatura estável (22,3–23,7 °C, últimas 4,5 h) ainda houve tendência de −9,5 g/h.
+
+| Variação absoluta entre leituras | mediana | p90 | p95 | ≤ 2 g |
+|---|---|---|---|---|
+| 60 s (temperatura estável) | 0,95 g | 2,2 g | 2,7 g | 87 % |
+| 120 s (temperatura estável) | 1,2 g | 2,9 g | 3,5 g | 77 % |
+| 5 min (noite inteira) | 1,8 g | 5,7 g | 8,6 g | 53 % |
+
+Critério de deriva (≤ 1 g em qualquer janela de 5 min) **reprovado**: nenhuma janela cumpriu. Massa absoluta do reservatório não é confiável por horas (bloqueio "< 200 g de água" não pode depender só dela). Para doses de 50 mL, só a diferença antes/depois de um ciclo curto é candidata, ainda marginal; decide o teste de retirada de 50 g ×10. Hipóteses físicas não isoladas: dilatação/gradiente térmico entre as quatro células meia-ponte e a placa, fluência mecânica. Não compensar por temperatura do ar nem por taras sem modelo validado.
+
+Firmware ESP-IDF gravado em 05/11 (`tools/flash_firmware.py`; backup `esp32-com5-20261104-fator20`). Telemetria física chega ao banco a cada 60 s pelo Wi-Fi/MQTT TLS (`esp32-01`), sem bloqueio do firewall. A página `http://192.168.15.30/` do sketch deixou de existir; acompanhar pelo Grafana. `scale_span_g` (amplitude das amostras brutas em ~1 s) foi adicionado para ajustar o limite de `mass_stable` (provisório 5 g; primeiras leituras ~3,5 g).

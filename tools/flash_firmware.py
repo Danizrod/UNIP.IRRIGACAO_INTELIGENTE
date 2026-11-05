@@ -59,7 +59,7 @@ def main():
     args = parser.parse_args()
 
     backup = json.loads(args.backup_manifest.read_text(encoding='utf-8'))
-    image = args.backup_manifest.parent / 'flash-4mb.bin'
+    image = args.backup_manifest.resolve().parent / 'flash-4mb.bin'
     if not image.is_file() or sha256(image) != backup['flash-4mb.bin']['sha256']:
         raise SystemExit('Backup completo ausente ou divergente do manifesto; não gravar.')
     manifest = json.loads((args.provision / 'manifest.json').read_text(encoding='utf-8'))

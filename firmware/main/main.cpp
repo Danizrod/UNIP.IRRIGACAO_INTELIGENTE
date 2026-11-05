@@ -159,7 +159,8 @@ static void queue_physical_telemetry(const hardware::Snapshot& h,int64_t now){
   // Shared platform: the same reading is repeated per unit, not three measurements.
   add_optional(j,"reservoir_mass_g",mass);
   if(h.scale_fresh)cJSON_AddNumberToObject(j,"scale_counts",h.scale_counts);else cJSON_AddNullToObject(j,"scale_counts");
-  if(mass)cJSON_AddBoolToObject(j,"mass_stable",std::fabs(h.scale_span/scale_calibration.counts_per_g)<=mass_stable_span_g);else cJSON_AddNullToObject(j,"mass_stable");
+  if(mass){double span_g=std::fabs(h.scale_span/scale_calibration.counts_per_g);cJSON_AddNumberToObject(j,"scale_span_g",span_g);cJSON_AddBoolToObject(j,"mass_stable",span_g<=mass_stable_span_g);}
+  else{cJSON_AddNullToObject(j,"scale_span_g");cJSON_AddNullToObject(j,"mass_stable");}
   if(scale_calibration.valid())cJSON_AddStringToObject(j,"scale_calibration_id",scale_calibration.id.c_str());
   int channel=ina_channel[i];
   bool power=channel>=0&&power_fresh&&h.power[channel].has_value();

@@ -37,7 +37,7 @@ class ContractTests(unittest.TestCase):
     def test_physical_firmware_payload(self):
         physical = self.fixture(device_id='esp32-01', experiment_id='tcc-2026', source='physical',
             calibration_id='soil-uncalibrated', soil_raw=3329, soil_index=None, sensor_valid=False,
-            reservoir_mass_g=-3.4, scale_counts=8605637, mass_stable=True,
+            reservoir_mass_g=-3.4, scale_counts=8605637, mass_stable=True, scale_span_g=0.8,
             scale_calibration_id='scale-20261104-provisorio', pump_voltage_v=5.32,
             pump_current_a=-0.0004, ina_channel=3, firmware_version='physical-telemetry-1')
         item = Telemetry(**physical)

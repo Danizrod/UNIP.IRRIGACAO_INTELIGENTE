@@ -33,7 +33,7 @@ Reservatório de ~1 L para os três vasos: ~800 mL úteis acima da reserva míni
 - T2: abaixo do limite inferior, uma dose; aguardar o intervalo mínimo e repetir enquanto o índice não atingir o limite superior (parada pelo alvo exigida no pré-projeto). Faixa e histerese definidas no piloto.
 - T3: mesma dose, faixa, parada e proteções do T2, antecipadas pela previsão de 30 min (código alinhado ao pré-projeto em 05/11; confirmar no piloto).
 - Proteções comuns: intervalo mínimo de 45 min por vaso, máximo de 300 mL/vaso/dia, duração máxima 2× o tempo calibrado e teto de 10 s, bloqueio com reservatório < 200 g de água, uma bomba por vez.
-- Aprovação da pesagem (carga de trabalho ~1,2 kg): deriva ≤ 1 g em qualquer janela de 5 min num registro ≥ 2 h; carga estática de ~1,2 kg por 30 min com variação ≤ 2 g; retirada de 50 g repetida 10 vezes com erro ≤ 2 g em ao menos 9 e estabilização em até 10 s; capacidade dos sensores confirmada acima da carga. Usar referência melhor que o celular.
+- Aprovação da pesagem (carga de trabalho ~1,2 kg): deriva ≤ 1 g em qualquer janela de 5 min num registro ≥ 2 h; carga estática de ~1,2 kg por 30 min com variação ≤ 2 g; retirada de 50 g repetida 10 vezes com erro ≤ 2 g em ao menos 9 e estabilização em até 10 s; capacidade dos sensores confirmada acima da carga. Usar referência melhor que o celular. Resultado de 05/11: deriva reprovada (~20 g/°C; ver [ligações](ligacoes-prototipo.md#registro-noturno-sem-carga-0405112026)); consumo só por diferença antes/depois de cada ciclo, e reserva mínima não pode depender apenas da massa absoluta.
 
 ## Reservatório e medidores compartilhados
 

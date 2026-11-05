@@ -39,9 +39,10 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 - [ ] Identificar capacidade da célula de carga e validar massa máxima.
 - [x] Revisar sketch web e exemplo serial de pesagem; registrar filtros, bloqueios e ressalvas da biblioteca.
 - [x] Fazer novo backup com fator 20,00 e executar diagnóstico isolado de deriva (04/11: ±6 g/15 min após boot nos dois programas; causa da deriva longa não isolada).
-- [ ] Registrar deriva longa com temperatura junto ao HX711 e testar massa conhecida por tempo de ciclo antes de aprovar a pesagem.
+- [x] Registrar deriva longa com temperatura junto ao HX711 (05/11: ~20 g/°C e −9,5 g/h com temperatura estável; critério de deriva reprovado).
+- [ ] Investigar causa térmica/mecânica da deriva e testar massa conhecida e retirada de 50 g por tempo de ciclo antes de aprovar a pesagem.
 - [x] Implementar drivers de sensores no ESP-IDF e painel ao vivo no Grafana (05/11; compilado, gravação pendente).
-- [ ] Gravar firmware na placa e confirmar telemetria física no banco/Grafana.
+- [x] Gravar firmware na placa e confirmar telemetria física no banco (05/11, Wi-Fi/MQTT TLS a cada 60 s).
 - [ ] Replanejar início/fim dos 30 dias após preparação; testes com LED não contam como ensaio.
 
 ## Firmware e controle
