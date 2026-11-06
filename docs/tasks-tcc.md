@@ -41,7 +41,8 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 - [x] Fazer novo backup com fator 20,00 e executar diagnóstico isolado de deriva (04/11: ±6 g/15 min após boot nos dois programas; causa da deriva longa não isolada).
 - [x] Registrar deriva longa com temperatura junto ao HX711 (05/11: ~20 g/°C e −9,5 g/h com temperatura estável; critério de deriva reprovado).
 - [x] Repetir deriva na caixa 3D (06/11: ~39 g/°C, deriva térmica permanece) e adotar pesagem por diferença por ciclo no firmware.
-- [ ] Refazer zero/fator na caixa nova e testar retirada de 50 g ×10 por tempo de ciclo antes de aprovar a pesagem por diferença.
+- [x] Refazer zero/fator na caixa nova (06/11: 22,19 contagens/g com pote de 600 g; gravar na placa quando houver cabo USB).
+- [ ] Retirada de 50 g ×10 reprovada em 06/11 (6/10 e 0/8; degrau caiu 7 % em 40 min): pesar o saquinho sozinho, conferir folga da tampa e então decidir o ajuste.
 - [ ] Alimentar `mass_g` pela balança, registrar reposição por MQTT e persistir a contabilidade do reservatório.
 - [x] Implementar drivers de sensores no ESP-IDF e painel ao vivo no Grafana (05/11; compilado, gravação pendente).
 - [x] Gravar firmware na placa e confirmar telemetria física no banco (05/11, Wi-Fi/MQTT TLS a cada 60 s).

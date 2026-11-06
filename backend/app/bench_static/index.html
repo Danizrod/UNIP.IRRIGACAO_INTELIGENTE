@@ -118,7 +118,7 @@ code{font-family:var(--mono);font-size:13px}
 <script>
 const $=id=>document.getElementById(id);
 const fmt=(v,d=1)=>v==null||!isFinite(v)?'—':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
-let live=null,session=null,plan=[],timer=null,stepIdx=-1,stepEnds=0,stepStarted=0,lastSpoken='',calibratedFactor=null;
+let live=null,session=null,plan=[],timer=null,stepIdx=-1,stepEnds=0,stepStarted=0,lastSpoken='',calibratedFactor=null,advancing=false;
 
 // ---------- leituras ao vivo ----------
 async function poll(){
@@ -144,7 +144,9 @@ function render(){
     $('soil'+i).textContent=u.payload.soil_raw??'—';
     $('soilInfo'+i).textContent=u.payload.soil_index==null?'ADC bruto (maior = mais seco)':`índice ${fmt(u.payload.soil_index)} %`;
   });
-  if(!$('factor').value&&live.factor)$('factor').value=(calibratedFactor||live.factor).toFixed(4);
+  // Prefer the last completed calibration (kept by the server) over the factor deduced from the board.
+  const best=calibratedFactor||(live.calibration&&live.calibration.factor)||live.factor;
+  if(!$('factor').value&&best)$('factor').value=best.toFixed(4);
   drawChart();
 }
 function drawChart(){
@@ -222,10 +224,12 @@ $('startBtn').addEventListener('click',async()=>{
 });
 $('cancelBtn').addEventListener('click',async()=>{if(!confirm('Cancelar o teste?'))return;await stop(true);});
 async function nextStep(){
-  stepIdx++;
-  if(stepIdx>=plan.length){await stop(false);return;}
-  const st=plan[stepIdx];
-  const mark=await api(`/api/sessions/${session.id}/steps`,{index:stepIdx,load:st.load,label:st.label,planned_s:st.s});
+  const idx=stepIdx+1;
+  if(idx>=plan.length){stepIdx=idx;await stop(false);return;}
+  const st=plan[idx];
+  // Advance only after the server stamped the step; a failed mark is retried on the next tick.
+  const mark=await api(`/api/sessions/${session.id}/steps`,{index:idx,load:st.load,label:st.label,planned_s:st.s});
+  stepIdx=idx;
   if(session.steps.length)session.steps[session.steps.length-1].ended_at=mark.started_at;
   session.steps.push({index:stepIdx,load:st.load,label:st.label,started_at:mark.started_at});
   stepStarted=Date.now();stepEnds=stepStarted+st.s*1000;lastSpoken='';
@@ -235,17 +239,17 @@ async function nextStep(){
   beep(1046,220);say(st.label+(st.load==='press'?'':'. Não encoste durante a contagem.'));
 }
 function tick(){
-  if(stepIdx<0||stepIdx>=plan.length)return;
+  if(advancing||stepIdx<0||stepIdx>=plan.length)return;
   const left=Math.max(0,Math.ceil((stepEnds-Date.now())/1000));const st=plan[stepIdx];
   $('count').textContent=left;
   $('progress').style.width=(100*(Date.now()-stepStarted)/(st.s*1000)).toFixed(1)+'%';
   const nx=plan[stepIdx+1];
   if(left===5&&lastSpoken!=='5'&&st.s>=15){lastSpoken='5';say(nx?`Em cinco segundos: ${nx.label}`:'Em cinco segundos o teste termina');}
   if(left<=3&&left>=1&&lastSpoken!==String(left)){lastSpoken=String(left);beep(740,90);}
-  if(Date.now()>=stepEnds){const i=stepIdx;stepIdx=plan.length+1;nextStepFrom(i);}
+  // One advance at a time: while the step mark is in flight, stepEnds is stale and ticks must not advance again.
+  if(Date.now()>=stepEnds){advancing=true;nextStep().catch(()=>{}).finally(()=>{advancing=false;});return;}
   $('runInfo').textContent=`Total restante ≈ ${Math.ceil((plan.slice(stepIdx+1).reduce((a,b)=>a+b.s,0)*1000+(stepEnds-Date.now()))/60000)} min`;
 }
-async function nextStepFrom(i){stepIdx=i;await nextStep();}
 async function stop(cancelled){
   clearInterval(timer);timer=null;
   try{session=await api(`/api/sessions/${session.id}/finish${cancelled?'?cancelled=true':''}`);}catch(e){}

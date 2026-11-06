@@ -135,4 +135,18 @@ Firmware ESP-IDF gravado em 05/11 (`tools/flash_firmware.py`; backup `esp32-com5
 
 O usuário trocou a estrutura de madeira por caixa impressa em 3D, mesma disposição dos sensores; a nova tampa mudou o zero (leitura ~−603 g com o offset antigo), não é deriva. Registro sem carga, caixa direto na mesa, firmware ESP-IDF a cada 60 s, 13:22–16:22 UTC (`data/raw/deriva-caixa3d-20261106.csv`, fora do Git): peso de −612 g a −512 g (+37 g/h) com o ar de 24,4 °C a 26,5 °C; correlação 0,95, ~39 g/°C. Nenhuma janela de 5 min ≤ 1 g; variação em 60 s ≤ 2 g em 68 % dos casos. **A deriva térmica permanece**: pesagem por diferença adotada (ver [protocolo](protocolo-testes.md)). Zero e fator precisam ser refeitos com massa conhecida na caixa nova.
 
-Em 05/11 o usuário desligou o ESP32; ao religar, o notebook estava no cabo de rede (IP 192.168.15.37, antes .35 no Wi-Fi) e o ESP32 não alcançava o broker. Certificado reemitido para .37 e .35 e só a partição `provision` regravada. Reservar no roteador o IP .37 para o MAC Ethernet do notebook. Telemetria temporariamente a cada 10 s (`telemetry_s`) para a calibração da balança; voltar a 60 s antes do ensaio.
+Em 05/11 o usuário desligou o ESP32; ao religar, o notebook estava no cabo de rede (IP 192.168.15.37, antes .35 no Wi-Fi) e o ESP32 não alcançava o broker. Certificado reemitido para .37 e .35 e só a partição `provision` regravada. IP .37 reservado no roteador para o MAC Ethernet do notebook (06/11). Telemetria temporariamente a cada 10 s (`telemetry_s`) para a calibração da balança; voltar a 60 s antes do ensaio.
+
+### Testes guiados de pesagem (06/11/2026, painel :8090)
+
+Sessões em `data/raw/sessoes-balanca/` (fora do Git), recalculadas das contagens brutas; leituras a cada 10 s, 2–3 por etapa de 40 s.
+
+- **Pressão (19:11 local):** depois de soltar, a leitura ficou 2,0 a 4,4 g abaixo da base inicial (fator antigo) com temperatura estável. Indica possível atrito ou contato da tampa; inconclusivo com 2 leituras por etapa.
+- **Calibração com pote de 600 g (19:25–19:37):** fator **22,19 contagens/g**, zero 8.572.284. Foram 2 cargas válidas: a 3ª perdeu o vazio final por erro do painel. Repetibilidade de 1,2 g; os 5 degraus do pote têm desvio-padrão de 24 contagens (0,2 %). O fator antigo gravado na placa (20,00) lia o pote como ~666 g.
+- **Retirada de ~50 g × 10, reprovada.** O saquinho foi informado como 50 g, sem pesagem própria confirmada. Pelo fator 22,19:
+  - sessão completa 19:40–19:54 (25,7–26,1 °C): 6/10 com erro ≤ 2 g, média 48,0 g;
+  - sessão 20:15–20:27 (24,7–25,4 °C): 0/8, média 45,5 g. As etapas 10 e 20 foram puladas por erro do painel e descartadas; as 8 retiradas restantes têm vazio e carga corretos.
+  - O degrau de ~50 g caiu de ~1.076 para ~1.000 contagens em 40 min (−7 %) enquanto o ar esfriou ~1,3 °C. O resultado "7 de 8" mostrado pelo painel usou o fator antigo, recarregado ao reabrir a página, e não vale.
+- **Causa não confirmada.** Hipóteses: atrito ou contato da tampa, coerente com o teste de pressão; massa real do saquinho abaixo de 50 g; variação de sensibilidade com a temperatura. A pesagem por diferença continua **não aprovada**.
+
+Painel corrigido: as etapas não são mais puladas quando a marcação demora (testado com 0,9 s de atraso); o fator da última calibração é mantido ao recarregar; sessões abertas de páginas recarregadas ficam `abandoned`.

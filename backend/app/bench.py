@@ -137,7 +137,8 @@ def provisional_factor():
 
 @app.get('/')
 def page():
-    return FileResponse(PAGE)
+    # no-store: an updated page must replace an open, cached copy on the next reload.
+    return FileResponse(PAGE, headers={'Cache-Control': 'no-store'})
 
 
 @app.get('/api/live')
@@ -152,7 +153,7 @@ def live(minutes: int = 15):
                 units=[dict(unit_id=r['unit_id'], treatment=r['treatment'], collected_at=iso(r['collected_at']),
                             age_s=(now() - r['received_at']).total_seconds(), payload=r['payload']) for r in latest],
                 series=[dict(at=iso(s['at']), mass=s['mass'], counts=s['counts'], temp=s['temp']) for s in series],
-                factor=provisional_factor())
+                factor=provisional_factor(), calibration=latest_calibration())
 
 
 class SessionStart(BaseModel):
@@ -194,8 +195,22 @@ def close_open_step(session, at):
         session['steps'][-1]['ended_at'] = iso(at)
 
 
+def all_sessions():
+    return [json.loads(p.read_text(encoding='utf-8')) for p in SESSIONS.glob('*.json')] if SESSIONS.exists() else []
+
+
+def latest_calibration():
+    done = [s for s in all_sessions() if s.get('calibration')]
+    return max(done, key=lambda s: s['started_at'])['calibration'] if done else None
+
+
 @app.post('/api/sessions')
 def start(body: SessionStart):
+    # A page reload leaves the previous session running; it can no longer be finished.
+    for old in all_sessions():
+        if old['status'] == 'running':
+            old['status'] = 'abandoned'
+            store(old)
     session = dict(id=str(uuid.uuid4()), kind=body.kind, mass_g=body.mass_g, factor=body.factor, note=body.note,
                    device=DEVICE, started_at=iso(now()), status='running', steps=[],
                    trial_eligible=False, purpose='diagnóstico/calibração da bancada; não é dado do ensaio')
@@ -228,9 +243,7 @@ def finish(session_id: str, cancelled: bool = False):
 
 @app.get('/api/sessions')
 def sessions():
-    if not SESSIONS.exists():
-        return []
-    items = [json.loads(p.read_text(encoding='utf-8')) for p in SESSIONS.glob('*.json')]
+    items = all_sessions()
     items.sort(key=lambda s: s['started_at'], reverse=True)
     return [dict(id=s['id'], kind=s['kind'], status=s['status'], started_at=s['started_at'], mass_g=s.get('mass_g')) for s in items[:30]]
 
@@ -245,6 +258,10 @@ def result(session_id: str):
     factor = session.get('factor') or provisional_factor()
     if session['kind'] == 'calibration':
         analysis = calibration(summary, session['mass_g'])
+        if analysis['ok'] and session['status'] == 'completed' and not session.get('calibration'):
+            session['calibration'] = dict(factor=analysis['factor'], offset=analysis['offset'],
+                                          repeatability_g=analysis['repeatability_g'], computed_at=iso(now()))
+            store(session)
     elif not factor:
         raise HTTPException(409, 'Fator indisponível')
     elif session['kind'] == 'withdrawal':

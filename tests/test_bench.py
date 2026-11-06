@@ -1,4 +1,7 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from app import bench
@@ -75,6 +78,26 @@ class BenchAnalysisTests(unittest.TestCase):
         data = [dict(at=T0 + timedelta(seconds=5), counts=999, mass=None, temp=None),
                 dict(at=T0 + timedelta(seconds=30), counts=10, mass=None, temp=None)]
         self.assertEqual(bench.summarize(steps, data)[0]['median'], 10)
+
+
+class BenchSessionTests(unittest.TestCase):
+    def test_new_session_abandons_running_and_latest_calibration_is_kept(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = bench.SESSIONS
+            bench.SESSIONS = Path(tmp)
+            try:
+                for i, (status, cal) in enumerate([('completed', dict(factor=22.0)), ('completed', dict(factor=22.2)), ('running', None)]):
+                    session = dict(id=f'00000000-0000-0000-0000-00000000000{i}', kind='calibration', status=status,
+                                   started_at=f'2026-11-06T2{i}:00:00+00:00', steps=[])
+                    if cal:
+                        session['calibration'] = cal
+                    bench.store(session)
+                self.assertEqual(bench.latest_calibration()['factor'], 22.2)
+                bench.start(bench.SessionStart(kind='press'))
+                statuses = {s['id'][-1]: s['status'] for s in bench.all_sessions()}
+                self.assertEqual(statuses['2'], 'abandoned')
+            finally:
+                bench.SESSIONS = old
 
 
 if __name__ == '__main__':
