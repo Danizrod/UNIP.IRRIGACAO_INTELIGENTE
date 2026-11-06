@@ -20,6 +20,15 @@ inline std::optional<double> withdrawn_ml(double before_g,double after_g,double 
  if(!stable||!std::isfinite(before_g)||!std::isfinite(after_g)||!std::isfinite(density_g_ml)||density_g_ml<=0||before_g<after_g||after_g<0)return {};
  return (before_g-after_g)/density_g_ml;
 }
+// Per-cycle withdrawal from stabilized medians taken just before and after one dose. The platform
+// drifts tens of grams per degree (05-06/11), so absolute mass is never used; only the short-window
+// difference, which may carry a residual drift bias of ~1 g/min. Implausible results are rejected.
+inline std::optional<double> cycle_withdrawal_ml(double before_g,double after_g,bool stable,double max_ml){
+ if(!stable||!std::isfinite(before_g)||!std::isfinite(after_g)||!std::isfinite(max_ml)||max_ml<=0)return {};
+ double removed=before_g-after_g; // Water density taken as 1 g/mL.
+ if(removed<0||removed>max_ml)return {};
+ return removed;
+}
 // Trapezoidal integration for the pump branch. A missing/invalid sample invalidates the cycle.
 class PumpEnergy {
  double previous_w=0,previous_s=0,wh=0,max_gap;bool first=true,valid=true;

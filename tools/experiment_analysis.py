@@ -66,14 +66,17 @@ def describe(plan, events, readings, as_of=None):
                     if any(e['status'] in ('accepted','started','unconfirmed') for e in cycle):
                         unresolved += 1
                     continue
-                numbers = [terminal.get('volume_ml'),terminal.get('energy_wh')]
-                if terminal.get('measurements_valid') is not True or any(v is None or not math.isfinite(v) or v<0 for v in numbers):
+                # Água é o resultado principal; energia complementar não invalida a água medida.
+                volume = terminal.get('volume_ml')
+                if terminal.get('measurements_valid') is not True or volume is None or not math.isfinite(volume) or volume<0:
                     invalid += 1
                 else:
                     valid_cycles.append(terminal)
+            energy_cycles = [c for c in valid_cycles if isinstance(c.get('energy_wh'),(int,float)) and math.isfinite(c['energy_wh']) and c['energy_wh']>=0]
             reports[treatment] = dict(unit_id=unit, valid_cycles=len(valid_cycles), invalid_cycles=invalid,
                 unresolved_cycles=unresolved, observed_valid_water_ml=sum(c['volume_ml'] for c in valid_cycles) if valid_cycles else None,
-                observed_valid_energy_wh=sum(c['energy_wh'] for c in valid_cycles) if valid_cycles else None,
+                observed_valid_energy_wh=sum(c['energy_wh'] for c in energy_cycles) if energy_cycles else None,
+                cycles_without_energy=len(valid_cycles)-len(energy_cycles),
                 valid_readings=valid, unique_readings=len(observed), expected_readings_until_snapshot=expected,
                 valid_reading_coverage=len(covered_slots)/expected if expected else None,
                 window_finished=as_of>=end, water_saving_pct=None)

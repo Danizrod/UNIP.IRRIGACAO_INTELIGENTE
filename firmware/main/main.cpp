@@ -236,7 +236,10 @@ static bool persist_event(size_t channel,const Event&e){
   cJSON_AddStringToObject(j,"source",source());auto stamp=event_stamp();
   cJSON_AddStringToObject(j,"origin",e.local?"local":"remote");
   cJSON_AddStringToObject(j,"experiment_id",experiment.c_str());cJSON_AddStringToObject(j,"unit_id",units[channel].unit_id.c_str());cJSON_AddStringToObject(j,"treatment",units[channel].treatment.c_str());
-  cJSON_AddBoolToObject(j,"measurements_valid",false);
+  // Water = scale difference around this dose only; pump energy not integrated yet (null).
+  cJSON_AddBoolToObject(j,"measurements_valid",e.withdrawn_ml.has_value());
+  if(e.withdrawn_ml)cJSON_AddNumberToObject(j,"volume_ml",*e.withdrawn_ml);
+  if(e.duration_s)cJSON_AddNumberToObject(j,"duration_s",*e.duration_s);
   cJSON_AddStringToObject(j,"occurred_at",stamp.c_str());cJSON_AddStringToObject(j,"status",e.status.c_str());cJSON_AddStringToObject(j,"reason",e.reason.c_str());
   char*s=cJSON_PrintUnformatted(j);bool saved=s&&durable_events->push_cycle(s,e.status);if(s)free(s);cJSON_Delete(j);
   return saved;
@@ -289,6 +292,9 @@ extern "C" void app_main(){
  limits=Limits{true,50,10,30,60,20,5};
 #endif
  static SharedRig core(units,limits,journal,pump,uuid,persist_event,20,2);controller=&core;
+#if CONFIG_IRRIGATION_SIMULATION
+ core.set_reservoir(1000,0); // Synthetic reservoir; physical water stays unknown until a registered refill.
+#endif
 #if !CONFIG_IRRIGATION_SIMULATION
  hardware::start(); // Sensors only; `limits` stays uncalibrated so no command can actuate.
 #endif
@@ -314,7 +320,7 @@ extern "C" void app_main(){
 #if CONFIG_IRRIGATION_SIMULATION
   if(utc_synced.load())controller->advance(epoch());
   if(pump.channel>=0){shared_removed_ml+=1;auto&s=sensors[pump.channel];s.soil=s.soil<99?s.soil+1:100;} // Synthetic flow/response only.
-  for(size_t i=0;i<3;++i){auto&s=sensors[i];if(!s.sampled_at)s.soil=40;else s.soil=s.soil>0.001?s.soil-0.001:0;s.valid=utc_synced.load();s.available_ml=shared_removed_ml<1000?1000-shared_removed_ml:0;s.removed_ml=shared_removed_ml;s.sampled_at=epoch();s.mass_stable=controller->stable();}
+  for(size_t i=0;i<3;++i){auto&s=sensors[i];if(!s.sampled_at)s.soil=40;else s.soil=s.soil>0.001?s.soil-0.001:0;s.valid=utc_synced.load();s.available_ml=shared_removed_ml<1000?1000-shared_removed_ml:0;s.removed_ml=shared_removed_ml;s.mass_g=1000-shared_removed_ml;s.sampled_at=epoch();s.mass_stable=controller->stable();}
 #endif
   if(utc_synced.load())controller->tick(sensors,epoch());
 #if CONFIG_IRRIGATION_SIMULATION

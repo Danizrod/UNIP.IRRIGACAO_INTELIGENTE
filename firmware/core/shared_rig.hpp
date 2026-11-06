@@ -1,5 +1,6 @@
 #pragma once
 #include "controller.hpp"
+#include <algorithm>
 #include <array>
 #include <memory>
 
@@ -24,6 +25,16 @@ class SharedRig {
  std::array<std::unique_ptr<Controller>,3> controls;
  std::function<bool(size_t,const Event&)> sink;
  int active_channel=-1;size_t next_local=0;
+ // Reservoir water is accounted, not weighed: the refill reference minus each cycle's measured
+ // withdrawal (or the maximum dose when it was not measured). Unknown until a refill is registered.
+ std::optional<double> reservoir_ml;double reserve_ml=0,max_dose_ml=0;std::array<bool,3> dosing{};
+ void account(size_t channel,const Event&e){
+  if(e.status=="started"){dosing[channel]=true;return;}
+  if(!dosing[channel]||(e.status!="completed"&&e.status!="failed"))return;
+  dosing[channel]=false;
+  if(reservoir_ml)reservoir_ml=std::max(0.0,*reservoir_ml-(e.withdrawn_ml?*e.withdrawn_ml:max_dose_ml));
+ }
+ double usable()const{return reservoir_ml?std::max(0.0,*reservoir_ml-reserve_ml):0;}
  int64_t now=0,last_end=0,quiet_until=0,interval_s,settle_s;
  bool initialized=false,remote=false;
  bool on(size_t channel){
@@ -38,11 +49,17 @@ public:
  SharedRig(std::array<UnitIdentity,3> units,Limits limits,Journal&j,ChannelDriver&d,
            std::function<std::string()> uuid,std::function<bool(size_t,const Event&)> emit,
            int64_t global_interval_s,int64_t stabilization_s):driver(d),journal(j),identities(std::move(units)),sink(std::move(emit)),interval_s(global_interval_s),settle_s(stabilization_s){
-  driver.off_all();last_end=journal.last_cycle_at();limits.settle_s=stabilization_s;
-  for(size_t i=0;i<3;++i){channels[i]=std::make_unique<Channel>(*this,i);controls[i]=std::make_unique<Controller>(limits,journal,*channels[i],uuid,[this,i](const Event&e){return sink(i,e);});}
+  driver.off_all();last_end=journal.last_cycle_at();limits.settle_s=stabilization_s;max_dose_ml=limits.volume_ml;
+  for(size_t i=0;i<3;++i){channels[i]=std::make_unique<Channel>(*this,i);controls[i]=std::make_unique<Controller>(limits,journal,*channels[i],uuid,[this,i](const Event&e){account(i,e);return sink(i,e);});}
  }
  const UnitIdentity& identity(size_t i)const{return identities.at(i);}
  int active()const{return active_channel;}
+ // Refill registered with all pumps off: water now available and the reserve never dosed.
+ bool set_reservoir(double available_ml,double minimum_reserve_ml){
+  if(running()||!std::isfinite(available_ml)||!std::isfinite(minimum_reserve_ml)||available_ml<0||minimum_reserve_ml<0)return false;
+  reservoir_ml=available_ml;reserve_ml=minimum_reserve_ml;return true;
+ }
+ std::optional<double> reservoir()const{return reservoir_ml;}
  bool running()const{for(auto&c:controls)if(c->running())return true;return false;}
  void advance(int64_t timestamp){now=timestamp;if(!initialized){quiet_until=now+settle_s;initialized=true;}}
  bool stable()const{return initialized&&active_channel<0&&now>=quiet_until;}
@@ -56,13 +73,15 @@ public:
   if(channel>=3)return false;
   advance(timestamp);auto reason=blocked(sensor);
   if(!reason.empty()){sink(channel,{command.id,"rejected",reason,false});return false;}
-  return controls[channel]->submit(std::move(command),sensor,timestamp);
+  Sensors accounted=sensor;accounted.available_ml=usable();
+  return controls[channel]->submit(std::move(command),accounted,timestamp);
  }
  void connectivity(bool online){remote=online;for(auto&c:controls)c->connectivity(online);}
  bool synchronize(int64_t timestamp){if(running()||!stable())return false;for(auto&c:controls)if(!c->synchronize(timestamp))return false;return true;}
  void watchdog(int64_t timestamp){advance(timestamp);driver.off_all();for(auto&c:controls)c->watchdog(timestamp);active_channel=-1;quiet_until=timestamp+settle_s;}
  void tick(std::array<Sensors,3>& sensors,int64_t timestamp){
   advance(timestamp);
+  for(auto&s:sensors)s.available_ml=usable();
   for(size_t i=0;i<3;++i)controls[i]->tick(sensors[i],timestamp,false);
   if(!remote&&!running()&&stable()){
    // Fair local selection: after a successful cycle, start scanning after that unit.

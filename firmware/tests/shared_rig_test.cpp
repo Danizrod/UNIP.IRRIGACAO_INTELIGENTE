@@ -23,28 +23,44 @@ int main(){
  auto emit=[&](size_t unit,const Event&e){events.push_back({unit,e});return true;};
  SharedRig rig(units,limits,journal,driver,[&](){return "local-"+std::to_string(++ids);},emit,20,2);
  assert(driver.active==-1&&rig.identity(2).treatment=="T3");
+ assert(rig.set_reservoir(1000,200));
  std::array<Sensors,3> sensors;
- auto sample=[&](int64_t time,double removed,bool stable){for(auto&s:sensors){s={true,40,1000,removed,time,stable};}};
+ auto sample=[&](int64_t time,double removed,bool stable){for(auto&s:sensors){s={true,40,0,removed,time,stable,1000-removed};}};
  sample(100,0,false);rig.connectivity(true);rig.tick(sensors,100);assert(!rig.synchronize(100));
  assert(!rig.submit(0,{"before-stable",100,110,10,5},sensors[0],100));assert(events.back().second.reason=="shared_mass_not_stable");
  sample(102,0,true);rig.tick(sensors,102);assert(rig.synchronize(102));assert(rig.submit(0,{"unit-0",102,120,10,5},sensors[0],102));assert(driver.active==0);
  assert(!rig.submit(1,{"unit-1-busy",102,120,10,5},sensors[1],102));assert(events.back().first==1&&events.back().second.reason=="shared_executor_busy");
- sample(103,10,false);rig.tick(sensors,103);assert(driver.active==-1&&rig.running());
- assert(!rig.synchronize(103));assert(!rig.submit(2,{"unit-2-settling",103,120,10,5},sensors[2],103));
- sample(105,10,true);rig.tick(sensors,105);assert(!rig.running());assert(events.back().first==0&&events.back().second.status=="completed");
- assert(!rig.submit(1,{"unit-1-interval",105,130,10,5},sensors[1],105));assert(events.back().second.reason=="global_minimum_interval");
- sample(123,10,true);assert(rig.submit(1,{"unit-1",123,140,10,5},sensors[1],123));assert(driver.active==1);rig.watchdog(124);assert(driver.active==-1&&!rig.running());
+ // The scale never stops the pump: the dose ends at its calibrated time, then mass settles.
+ sample(103,10,false);rig.tick(sensors,103);assert(driver.active==0);
+ sample(107,10,false);rig.tick(sensors,107);assert(driver.active==-1&&rig.running());
+ assert(!rig.synchronize(107));assert(!rig.submit(2,{"unit-2-settling",107,120,10,5},sensors[2],107));
+ sample(109,10,true);rig.tick(sensors,109);assert(!rig.running());assert(events.back().first==0&&events.back().second.status=="completed");
+ assert(*events.back().second.withdrawn_ml==10&&*rig.reservoir()==990);
+ assert(!rig.submit(1,{"unit-1-interval",109,130,10,5},sensors[1],109));assert(events.back().second.reason=="global_minimum_interval");
+ sample(130,10,true);assert(rig.submit(1,{"unit-1",130,150,10,5},sensors[1],130));assert(driver.active==1);rig.watchdog(131);assert(driver.active==-1&&!rig.running());
  assert(events.back().first==1&&events.back().second.status=="failed");
+ assert(*rig.reservoir()==940); // Unmeasured cycle: the maximum dose is deducted.
  // Local requests across all units are round-robin and never overlap a remote cycle.
  rig.connectivity(false);
  for(int cycle=0;cycle<3;++cycle){
-  int64_t start=150+cycle*30;sample(start,20+cycle*50,true);for(auto&s:sensors)s.soil=20;
+  int64_t start=160+cycle*30;double removed=10+cycle*50;sample(start,removed,true);for(auto&s:sensors)s.soil=20;
   rig.tick(sensors,start);assert(driver.active==cycle);assert(events.back().first==static_cast<size_t>(cycle)&&events.back().second.local);
-  sample(start+1,70+cycle*50,false);for(auto&s:sensors)s.soil=20;rig.tick(sensors,start+1);assert(driver.active==-1&&rig.running());
-  sample(start+3,70+cycle*50,true);for(auto&s:sensors)s.soil=20;rig.tick(sensors,start+3);assert(!rig.running());assert(events.back().first==static_cast<size_t>(cycle)&&events.back().second.status=="completed");
+  sample(start+5,removed+25,false);for(auto&s:sensors)s.soil=20;rig.tick(sensors,start+5);assert(driver.active==cycle);
+  sample(start+10,removed+50,false);for(auto&s:sensors)s.soil=20;rig.tick(sensors,start+10);assert(driver.active==-1&&rig.running());
+  sample(start+12,removed+50,true);for(auto&s:sensors)s.soil=20;rig.tick(sensors,start+12);assert(!rig.running());assert(events.back().first==static_cast<size_t>(cycle)&&events.back().second.status=="completed");
  }
- assert(driver.order==std::vector<size_t>({0,1,0,1,2}));
+ assert(driver.order==std::vector<size_t>({0,1,0,1,2})&&*rig.reservoir()==790);
  // Unstable post-cycle mass fails without starting another channel.
- sample(250,170,true);rig.connectivity(true);rig.advance(250);assert(rig.synchronize(250));assert(rig.submit(2,{"unstable-end",250,270,10,5},sensors[2],250));
- sample(251,180,false);rig.tick(sensors,251);sample(257,180,false);rig.tick(sensors,257);assert(events.back().second.reason=="mass_stabilization_timeout"&&driver.active==-1);
+ sample(260,160,true);rig.connectivity(true);rig.advance(260);assert(rig.synchronize(260));assert(rig.submit(2,{"unstable-end",260,280,10,5},sensors[2],260));
+ sample(265,170,false);rig.tick(sensors,265);sample(271,170,false);rig.tick(sensors,271);assert(events.back().second.reason=="mass_stabilization_timeout"&&driver.active==-1);
+ // Reservoir accounting: unknown before refill, disturbance not counted as a dose, low water blocks.
+ JournalMock j2;DriverMock d2;std::vector<std::pair<size_t,Event>> e2;
+ SharedRig r2(units,limits,j2,d2,[&](){return "l2-"+std::to_string(++ids);},[&](size_t u,const Event&e){e2.push_back({u,e});return true;},20,2);
+ auto at=[&](int64_t t,double mass,bool stable){for(auto&s:sensors){s={true,40,0,0,t,stable,mass};}};
+ at(1000,-500,true);r2.connectivity(true);r2.tick(sensors,1000);at(1002,-500,true);r2.tick(sensors,1002);assert(r2.synchronize(1002));
+ assert(!r2.submit(0,{"no-refill",1002,1020,10,5},sensors[0],1002));assert(e2.back().second.reason=="insufficient_water"&&d2.starts==0);
+ assert(r2.set_reservoir(260,200));assert(r2.submit(0,{"disturbed",1002,1020,50,5},sensors[0],1002));
+ at(1007,-620,false);r2.tick(sensors,1007);at(1009,-620,true);r2.tick(sensors,1009);
+ assert(e2.back().second.status=="completed"&&e2.back().second.reason=="withdrawal_not_measured"&&!e2.back().second.withdrawn_ml&&*r2.reservoir()==210);
+ at(1030,-620,true);r2.tick(sensors,1030);assert(!r2.submit(1,{"low",1030,1040,20,5},sensors[1],1030));assert(e2.back().second.reason=="insufficient_water");
 }

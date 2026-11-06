@@ -26,6 +26,12 @@ class AnalysisTests(unittest.TestCase):
         result=analysis.describe(self.plan,[event,event],[],end)['periods']
         self.assertEqual(result['ultima15']['T1']['observed_valid_water_ml'],10)
         self.assertIsNone(result['primeira15']['T1']['observed_valid_water_ml'])
+        # Water measured without pump energy still counts as water; energy stays absent.
+        event['energy_wh']=None
+        result=analysis.describe(self.plan,[event],[],end)['periods']['total30']['T1']
+        self.assertEqual(result['observed_valid_water_ml'],10)
+        self.assertIsNone(result['observed_valid_energy_wh'])
+        self.assertEqual(result['cycles_without_energy'],1)
         event['measurements_valid']=False
         result=analysis.describe(self.plan,[event],[],end)['periods']['total30']['T1']
         self.assertEqual(result['invalid_cycles'],1)

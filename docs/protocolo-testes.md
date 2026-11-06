@@ -28,7 +28,9 @@ Base metodológica: [NIST — princípios de delineamento](https://itl.nist.gov/
 
 Reservatório de ~1 L para os três vasos: ~800 mL úteis acima da reserva mínima, reposição prevista diariamente e registrada como intervenção. Nenhum valor abaixo foi medido; vazão da bomba (80–120 L/h de anúncio) não confirmada.
 
-- Dose comum: **50 mL por ciclo** (faixa de ajuste 30–80 mL), aplicada por tempo calibrado no piloto e conferida pela pesagem; não interromper a bomba por leitura de peso em tempo real.
+- Dose comum: **50 mL por ciclo** (faixa de ajuste 30–80 mL), aplicada por tempo calibrado no piloto; não interromper a bomba por leitura de peso em tempo real.
+- **Pesagem por diferença (06/11, implementada):** a balança deriva ~20–40 g/°C, então a massa absoluta não é usada. Cada ciclo registra a mediana estabilizada antes de ligar e depois da estabilização; água retirada = antes − depois. Resultado negativo ou acima de 2× a dose é registrado como `withdrawal_not_measured` (ciclo concluído, água nula). Viés residual de deriva de ~1 g/min no intervalo do ciclo.
+- **Reserva do reservatório por contabilidade:** água disponível = volume registrado na reposição − retiradas medidas (dose máxima quando não medida). Sem reposição registrada, nenhum ciclo é aceito (`insufficient_water`).
 - T1: horários fixos com número de doses = consumo médio diário do piloto ÷ dose (ex.: 150 mL/dia → 07h, 12h, 17h).
 - T2: abaixo do limite inferior, uma dose; aguardar o intervalo mínimo e repetir enquanto o índice não atingir o limite superior (parada pelo alvo exigida no pré-projeto). Faixa e histerese definidas no piloto.
 - T3: mesma dose, faixa, parada e proteções do T2, antecipadas pela previsão de 30 min (código alinhado ao pré-projeto em 05/11; confirmar no piloto).

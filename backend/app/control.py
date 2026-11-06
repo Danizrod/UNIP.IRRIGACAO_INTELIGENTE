@@ -21,7 +21,9 @@ def decide(config: DecisionConfiguration, telemetry: Telemetry | None, now: date
         return False, 'stale_telemetry'
     if not telemetry.sensor_valid or telemetry.soil_index is None or telemetry.calibration_id != config.calibration_id:
         return False, 'invalid_or_uncalibrated_sensor'
-    if telemetry.reservoir_mass_g is None or telemetry.reservoir_mass_g < config.min_reservoir_mass_g:
+    # Absolute mass is only meaningful for synthetic data: the physical scale drifts tens of grams
+    # per degree, so the firmware guards physical water by refill accounting minus measured doses.
+    if config.source == 'simulation' and (telemetry.reservoir_mass_g is None or telemetry.reservoir_mass_g < config.min_reservoir_mass_g):
         return False, 'insufficient_or_unknown_reservoir'
     if last_cycle_at and now < last_cycle_at + timedelta(seconds=config.cooldown_s):
         return False, 'cooldown'
