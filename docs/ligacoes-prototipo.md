@@ -143,10 +143,12 @@ Sessões em `data/raw/sessoes-balanca/` (fora do Git), recalculadas das contagen
 
 - **Pressão (19:11 local):** depois de soltar, a leitura ficou 2,0 a 4,4 g abaixo da base inicial (fator antigo) com temperatura estável. Indica possível atrito ou contato da tampa; inconclusivo com 2 leituras por etapa.
 - **Calibração com pote de 600 g (19:25–19:37):** fator **22,19 contagens/g**, zero 8.572.284. Foram 2 cargas válidas: a 3ª perdeu o vazio final por erro do painel. Repetibilidade de 1,2 g; os 5 degraus do pote têm desvio-padrão de 24 contagens (0,2 %). O fator antigo gravado na placa (20,00) lia o pote como ~666 g.
-- **Retirada de ~50 g × 10, reprovada.** O saquinho foi informado como 50 g, sem pesagem própria confirmada. Pelo fator 22,19:
-  - sessão completa 19:40–19:54 (25,7–26,1 °C): 6/10 com erro ≤ 2 g, média 48,0 g;
-  - sessão 20:15–20:27 (24,7–25,4 °C): 0/8, média 45,5 g. As etapas 10 e 20 foram puladas por erro do painel e descartadas; as 8 retiradas restantes têm vazio e carga corretos.
-  - O degrau de ~50 g caiu de ~1.076 para ~1.000 contagens em 40 min (−7 %) enquanto o ar esfriou ~1,3 °C. O resultado "7 de 8" mostrado pelo painel usou o fator antigo, recarregado ao reabrir a página, e não vale.
-- **Causa não confirmada.** Hipóteses: atrito ou contato da tampa, coerente com o teste de pressão; massa real do saquinho abaixo de 50 g; variação de sensibilidade com a temperatura. A pesagem por diferença continua **não aprovada**.
+- **Retirada de 50 g.** Segundo o usuário, a 1ª sessão (19:40–19:54, completa) usou saquinho de ~53 g (sacola de ~3 g não descontada); as seguintes, um copo pesado em exatamente 50 g. A tampa não encosta na caixa (conferido pelo usuário).
+  - Copo: 16 retiradas em 4 sessões, 1.017,8 ± 24,8 contagens (DP de ~1,2 g por retirada) → **fator incremental 20,36 contagens/g**. Ajustado só na sessão 20:15 (20,19), as outras 8 retiradas ficam com erro ≤ 2 g em 7 (máx. 2,8 g).
+  - Saquinho: 1.064 contagens → 52,3 g pelo fator incremental, coerente com ~53 g. A "queda de 7 %" era a troca de objeto, não deriva de sensibilidade.
+  - Com 20,36, 14/16 retiradas do copo ficam em ±2 g (87,5 %); o critério de 9/10 não foi formalmente atingido. Cada etapa teve só 2–3 leituras de telemetria (10 s), enquanto o ciclo real usa mediana de amostras do HX711.
+- **Não linearidade (~9 %):** 0 → 600 g dá 22,19 contagens/g; +50 g sobre ~550 g dá 20,36. A massa absoluta não serve para retirada; a pesagem por diferença usa o fator incremental.
+- **Gravado na placa (06/11, 20:40 local, só partição `provision`):** `scale_cal=scale-20261106-incremental-50g`, fator 20,356, zero 8.569.719 (balança vazia, após religar o USB). A massa absoluta segue sujeita à deriva térmica e à não linearidade.
+- **Pendente antes do ensaio:** retirada de 50 g × 10 com o reservatório na carga de trabalho (~1,2 kg), etapas mais longas e fator 20,356. A pesagem por diferença ainda **não está aprovada**.
 
-Painel corrigido: as etapas não são mais puladas quando a marcação demora (testado com 0,9 s de atraso); o fator da última calibração é mantido ao recarregar; sessões abertas de páginas recarregadas ficam `abandoned`.
+Painel corrigido: as etapas não são mais puladas quando a marcação demora (testado com 0,9 s de atraso); o fator sugerido é o gravado na placa (deduzido só de leituras da calibração atual); sessões abertas de páginas recarregadas ficam `abandoned`.

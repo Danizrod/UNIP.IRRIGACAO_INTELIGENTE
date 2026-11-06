@@ -144,8 +144,9 @@ function render(){
     $('soil'+i).textContent=u.payload.soil_raw??'—';
     $('soilInfo'+i).textContent=u.payload.soil_index==null?'ADC bruto (maior = mais seco)':`índice ${fmt(u.payload.soil_index)} %`;
   });
-  // Prefer the last completed calibration (kept by the server) over the factor deduced from the board.
-  const best=calibratedFactor||(live.calibration&&live.calibration.factor)||live.factor;
+  // Default to the factor recorded on the board (incremental, 50 g at working load). The 600 g pot
+  // factor differs ~9 % (nonlinearity, 06/11) and is used only right after a calibration on this page.
+  const best=calibratedFactor||live.factor;
   if(!$('factor').value&&best)$('factor').value=best.toFixed(4);
   drawChart();
 }
@@ -273,7 +274,7 @@ async function showResult(id){
       html=`<div class="verdict ${cls}">Fator ${fmt(a.factor,4)} contagens/g · zero ${fmt(a.offset,0)} contagens</div>
       <p>Repetibilidade entre as ${a.repeats} cargas: <b>${fmt(a.repeatability_g,2)} g</b> na massa de ${fmt(a.mass_g)} g ${a.repeatability_g<=2?'(boa)':'(alta — repita com mais cuidado)'}.</p>
       <table><tr><th>Carga</th><th>Δ contagens</th><th>Fator</th><th>Deriva do vazio</th></tr>${a.factors.map(f=>`<tr><td>etapa ${f.step+1}</td><td>${fmt(f.delta_counts,0)}</td><td>${fmt(f.factor,4)}</td><td>${fmt(f.empty_drift_counts/a.factor,1)} g</td></tr>`).join('')}</table>
-      <p class="note">O fator já foi preenchido para o teste de retirada. Para gravar zero e fator na placa, envie estes números ao Claude: o painel não grava a placa.</p>`;
+      <p class="note">Fator de carga total (0 → massa do pote). Em 06/11 ele diferiu ~9 % do fator incremental de 50 g; para retiradas, confira com o teste de 50 g. O painel não grava a placa.</p>`;
     }
   }else if(d.session.kind==='withdrawal'){
     const cls=a.approved?'good':'bad';

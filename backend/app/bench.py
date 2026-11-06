@@ -127,7 +127,11 @@ def provisional_factor():
             """SELECT DISTINCT (payload->>'scale_counts')::float AS c, (payload->>'reservoir_mass_g')::float AS m
                FROM telemetry WHERE device_id=%s AND source='physical' AND payload->>'scale_counts' IS NOT NULL
                AND payload->>'reservoir_mass_g' IS NOT NULL AND collected_at > now() - interval '1 hour'
-               LIMIT 50""", (DEVICE,)).fetchall()
+               -- only readings under the board's current calibration; mixing two would give a bogus factor
+               AND payload->>'scale_calibration_id' IS NOT DISTINCT FROM (
+                   SELECT payload->>'scale_calibration_id' FROM telemetry WHERE device_id=%s AND source='physical'
+                   ORDER BY collected_at DESC LIMIT 1)
+               LIMIT 50""", (DEVICE, DEVICE)).fetchall()
     for a in rows:
         for b in rows:
             if abs(a['c'] - b['c']) >= 50 and a['m'] != b['m']:
