@@ -18,7 +18,7 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 - [x] Preparar backend, PostgreSQL, MQTT/TLS e Grafana.
 - [x] Verificar ingestão e persistência com dados simulados.
 - [x] Preparar ESP-IDF (Docker), identidade `esp32-01`, certificado com IP do notebook e broker na rede local (05/11).
-- [ ] Reservar IP do notebook no roteador e confirmar acesso do ESP32 pelo firewall.
+- [x] Reservar IP do notebook no roteador (06/11: .37) e confirmar acesso do ESP32 pelo firewall.
 - [x] Implementar backup e verificar restauração em banco temporário isolado.
 - [x] Preparar serviço de backup diário enquanto Docker estiver ativo.
 - [ ] Configurar backup e cópia adicional no notebook definitivo.
