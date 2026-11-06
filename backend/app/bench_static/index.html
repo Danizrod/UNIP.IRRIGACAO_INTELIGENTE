@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bancada ao vivo</title>
+<style>
+:root{
+  --bg:#f4f5f2;--panel:#ffffff;--ink:#1d2321;--muted:#5f6b66;--line:#dfe3df;
+  --accent:#1f7a5a;--accent-ink:#ffffff;--warn:#b26a00;--bad:#b3261e;--good:#1f7a5a;
+  --load:#e7f3ee;--empty:#f6f2e6;--press:#f6e7e6;
+  --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#121614;--panel:#1b201e;--ink:#e6ebe8;--muted:#9aa6a0;--line:#2c3431;
+  --accent:#4fbf93;--accent-ink:#0c1411;--warn:#e0a03a;--bad:#ef6b62;--good:#4fbf93;
+  --load:#1d3029;--empty:#2e2a1d;--press:#33201f;}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,"Segoe UI",sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+h1{font-size:18px;margin:0}
+h2{font-size:15px;margin:0 0 10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+main{max-width:1180px;margin:0 auto;padding:18px 16px 40px;display:grid;gap:16px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.big{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+.small{color:var(--muted);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:13px;border:1px solid var(--line)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.ok .dot{background:var(--good)}.late .dot{background:var(--warn)}.off .dot{background:var(--bad)}
+svg{width:100%;height:220px;display:block}
+.two{display:grid;gap:16px;grid-template-columns:1fr}
+@media(min-width:900px){.two{grid-template-columns:1.1fr .9fr}}
+label{display:block;font-size:13px;color:var(--muted);margin:8px 0 4px}
+select,input{width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit}
+button{padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;font-weight:600;cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.stage{border-radius:12px;padding:18px;text-align:center;border:1px solid var(--line)}
+.stage.empty{background:var(--empty)}.stage.loaded{background:var(--load)}.stage.press{background:var(--press)}
+.count{font-size:84px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;margin:6px 0}
+.instr{font-size:22px;font-weight:700}
+.next{margin-top:8px;color:var(--muted)}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:12px}
+.bar>div{height:100%;background:var(--accent);width:0}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
+td,th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right}
+td:first-child,th:first-child{text-align:left}
+.verdict{font-weight:700;font-size:17px;margin:6px 0}
+.good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.note{font-size:13px;color:var(--muted);margin-top:8px}
+code{font-family:var(--mono);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Bancada ao vivo — <span id="device">esp32-01</span></h1>
+  <span id="conn" class="pill off"><span class="dot"></span><span id="connText">aguardando dados…</span></span>
+</header>
+<main>
+  <section>
+    <h2>Leituras atuais</h2>
+    <div class="grid">
+      <div class="card"><div class="small">Balança (calibração provisória)</div><div class="big" id="mass">—</div><div class="small" id="massInfo">—</div></div>
+      <div class="card"><div class="small">Temperatura</div><div class="big" id="temp">—</div><div class="small" id="hum">—</div></div>
+      <div class="card"><div class="small" id="soilLabel0">Solo pot-01</div><div class="big" id="soil0">—</div><div class="small" id="soilInfo0">ADC bruto (maior = mais seco)</div></div>
+      <div class="card"><div class="small" id="soilLabel1">Solo pot-02</div><div class="big" id="soil1">—</div><div class="small" id="soilInfo1">ADC bruto</div></div>
+      <div class="card"><div class="small" id="soilLabel2">Solo pot-03</div><div class="big" id="soil2">—</div><div class="small" id="soilInfo2">ADC bruto</div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Balança — últimos 15 minutos</h2>
+    <svg id="chart" viewBox="0 0 1000 220" preserveAspectRatio="none" role="img" aria-label="Massa da balança nos últimos 15 minutos"></svg>
+    <div class="small" id="chartInfo">—</div>
+  </section>
+
+  <div class="two">
+    <section class="card">
+      <h2>Teste guiado de pesagem</h2>
+      <div id="setup">
+        <label for="kind">Teste</label>
+        <select id="kind">
+          <option value="press">1. Teste de pressão (tampa livre?) — ~4 min</option>
+          <option value="calibration">2. Calibração: zero e fator — ~14 min</option>
+          <option value="withdrawal">3. Retirada de 50 g × 10 — ~14 min</option>
+        </select>
+        <label for="massRef" id="massLabel">Massa de referência (g)</label>
+        <input id="massRef" type="number" step="0.1" min="1">
+        <label for="factor">Fator (contagens por grama)</label>
+        <input id="factor" type="number" step="0.0001">
+        <div class="note" id="kindHelp"></div>
+        <div class="row">
+          <button class="primary" id="startBtn">Começar</button>
+          <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="voice" checked style="width:auto"> Voz</label>
+        </div>
+      </div>
+      <div id="run" hidden>
+        <div class="stage" id="stage">
+          <div class="small" id="stepNo">Etapa</div>
+          <div class="instr" id="instr">—</div>
+          <div class="count" id="count">—</div>
+          <div class="next" id="next">—</div>
+          <div class="bar"><div id="progress"></div></div>
+        </div>
+        <div class="row"><button id="cancelBtn">Cancelar teste</button><span class="small" id="runInfo"></span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Resultado</h2>
+      <div id="result" class="small">Nenhum teste concluído nesta página. Os resultados são calculados com as contagens do HX711 recebidas no banco (uma leitura a cada 10 s) e salvos em <code>data/raw/sessoes-balanca</code>. Nada é gravado na placa.</div>
+    </section>
+  </div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const fmt=(v,d=1)=>v==null||!isFinite(v)?'—':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
+let live=null,session=null,plan=[],timer=null,stepIdx=-1,stepEnds=0,stepStarted=0,lastSpoken='',calibratedFactor=null;
+
+// ---------- leituras ao vivo ----------
+async function poll(){
+  try{
+    const r=await fetch('/api/live');if(!r.ok)throw new Error(r.status);
+    live=await r.json();render();
+  }catch(e){setConn('off','sem resposta do servidor');}
+}
+function setConn(cls,text){$('conn').className='pill '+cls;$('connText').textContent=text;}
+function render(){
+  $('device').textContent=live.device;
+  const units=live.units||[];
+  if(!units.length){setConn('off','nenhum dado da placa');return;}
+  const age=Math.min(...units.map(u=>u.age_s));
+  setConn(age<=30?'ok':age<=120?'late':'off',age<=30?`ao vivo · última leitura há ${Math.round(age)} s`:`sem dados há ${Math.round(age)} s`);
+  const p=units[0].payload;
+  $('mass').textContent=p.reservoir_mass_g==null?'—':fmt(p.reservoir_mass_g)+' g';
+  $('massInfo').textContent=`oscilação em 1 s: ${fmt(p.scale_span_g)} g · ${p.mass_stable?'estável':'instável'} · contagens ${p.scale_counts??'—'}`;
+  $('temp').textContent=p.temperature_c==null?'—':fmt(p.temperature_c)+' °C';
+  $('hum').textContent=p.humidity_pct==null?'umidade —':'umidade '+fmt(p.humidity_pct)+' %';
+  units.slice(0,3).forEach((u,i)=>{
+    $('soilLabel'+i).textContent=`Solo ${u.unit_id} (${u.treatment})`;
+    $('soil'+i).textContent=u.payload.soil_raw??'—';
+    $('soilInfo'+i).textContent=u.payload.soil_index==null?'ADC bruto (maior = mais seco)':`índice ${fmt(u.payload.soil_index)} %`;
+  });
+  if(!$('factor').value&&live.factor)$('factor').value=(calibratedFactor||live.factor).toFixed(4);
+  drawChart();
+}
+function drawChart(){
+  const s=(live.series||[]).filter(x=>x.mass!=null);const svg=$('chart');
+  if(s.length<2){svg.innerHTML='';$('chartInfo').textContent='Aguardando leituras…';return;}
+  const t0=Date.parse(s[0].at),t1=Date.parse(live.server_time);
+  let lo=Math.min(...s.map(x=>x.mass)),hi=Math.max(...s.map(x=>x.mass));
+  const pad=Math.max(5,(hi-lo)*.12);lo-=pad;hi+=pad;
+  const X=t=>(t-t0)/Math.max(1,t1-t0)*1000,Y=m=>210-(m-lo)/(hi-lo)*200;
+  let bands='';
+  if(session)for(const st of session.steps){
+    const a=Date.parse(st.started_at),b=st.ended_at?Date.parse(st.ended_at):t1;if(b<t0)continue;
+    bands+=`<rect x="${X(Math.max(a,t0))}" y="0" width="${Math.max(0,X(b)-X(Math.max(a,t0)))}" height="220" fill="var(--${st.load})" opacity=".9"/>`;
+  }
+  const pts=s.map(x=>`${X(Date.parse(x.at)).toFixed(1)},${Y(x.mass).toFixed(1)}`).join(' ');
+  svg.innerHTML=`${bands}<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+   <text x="6" y="16" font-size="13" fill="var(--muted)">${fmt(hi,0)} g</text><text x="6" y="214" font-size="13" fill="var(--muted)">${fmt(lo,0)} g</text>`;
+  const last=s[s.length-1];
+  $('chartInfo').textContent=`Última: ${fmt(last.mass)} g · faixa no período: ${fmt(hi-lo-2*pad)} g · temperatura ${fmt(last.temp)} °C. Faixas coloridas = etapas do teste em andamento.`;
+}
+
+// ---------- planos de teste ----------
+const HELP={
+  press:'Balança vazia. Quando pedir, aperte o centro da tampa com o dedo, de leve, e solte quando mandar. Verifica se a tampa volta sempre ao mesmo valor (sem raspar na caixa).',
+  calibration:'Use o pote pesado na balança de cozinha (informe a massa exata). A balança começa vazia; você alterna vazio e pote três vezes. Coloque sempre no centro e não encoste durante a contagem.',
+  withdrawal:'Deixe o pote sobre a balança durante todo o teste. Informe a massa exata do saquinho (~50 g). Você coloca o saquinho sobre o pote e retira, 10 vezes. Use o fator da calibração.'
+};
+function buildPlan(kind){
+  if(kind==='press'){
+    const p=[{load:'empty',label:'Não encoste na balança',s:40}];
+    for(let i=0;i<3;i++)p.push({load:'press',label:'Aperte o centro da tampa',s:10},{load:'empty',label:'Solte e não encoste',s:40});
+    return p;
+  }
+  if(kind==='calibration'){
+    const p=[{load:'empty',label:'Balança vazia — não encoste',s:120}];
+    for(let i=0;i<3;i++)p.push({load:'loaded',label:'Coloque o pote no centro',s:120},{load:'empty',label:'Retire o pote',s:120});
+    return p;
+  }
+  const p=[{load:'empty',label:'Pote sozinho sobre a balança',s:40}];
+  for(let i=0;i<10;i++)p.push({load:'loaded',label:`Coloque o saquinho sobre o pote (${i+1}/10)`,s:40},{load:'empty',label:`Retire o saquinho (${i+1}/10)`,s:40});
+  return p;
+}
+function syncSetup(){
+  const k=$('kind').value;$('kindHelp').textContent=HELP[k];
+  const show=k!=='press';$('massLabel').hidden=!show;$('massRef').hidden=!show;
+  $('massLabel').textContent=k==='calibration'?'Massa do pote com arroz (g)':'Massa do saquinho (g)';
+  $('massRef').value=k==='calibration'?600:50;
+  $('factor').disabled=k==='calibration';
+  const total=buildPlan(k).reduce((a,b)=>a+b.s,0);$('startBtn').textContent=`Começar (${Math.round(total/60)} min)`;
+}
+$('kind').addEventListener('change',syncSetup);
+
+// ---------- voz e bipes ----------
+let audio=null;
+function beep(freq=880,ms=140){try{audio=audio||new AudioContext();const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=freq;g.gain.value=.15;o.connect(g).connect(audio.destination);o.start();o.stop(audio.currentTime+ms/1000);}catch(e){}}
+function say(text){
+  if(!$('voice').checked||!('speechSynthesis' in window))return;
+  speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='pt-BR';
+  const v=speechSynthesis.getVoices().find(v=>v.lang&&v.lang.toLowerCase().startsWith('pt'));if(v)u.voice=v;u.rate=1.05;speechSynthesis.speak(u);
+}
+if('speechSynthesis' in window)speechSynthesis.onvoiceschanged=()=>{};
+
+// ---------- execução ----------
+async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(!r.ok)throw new Error(await r.text());return r.json();}
+$('startBtn').addEventListener('click',async()=>{
+  const kind=$('kind').value;const mass=Number($('massRef').value);const factor=Number($('factor').value);
+  if(kind!=='press'&&!(mass>0)){alert('Informe a massa de referência.');return;}
+  if(kind!=='calibration'&&!(factor)){alert('Fator indisponível: aguarde as leituras ou faça a calibração.');return;}
+  plan=buildPlan(kind);
+  try{session=await api('/api/sessions',{kind,mass_g:kind==='press'?null:mass,factor:kind==='calibration'?null:factor});}
+  catch(e){alert('Não foi possível iniciar: '+e.message);return;}
+  session.steps=[];$('setup').hidden=true;$('run').hidden=false;
+  say('Teste iniciado.');beep(660);stepIdx=-1;await nextStep();
+  timer=setInterval(tick,200);
+});
+$('cancelBtn').addEventListener('click',async()=>{if(!confirm('Cancelar o teste?'))return;await stop(true);});
+async function nextStep(){
+  stepIdx++;
+  if(stepIdx>=plan.length){await stop(false);return;}
+  const st=plan[stepIdx];
+  const mark=await api(`/api/sessions/${session.id}/steps`,{index:stepIdx,load:st.load,label:st.label,planned_s:st.s});
+  if(session.steps.length)session.steps[session.steps.length-1].ended_at=mark.started_at;
+  session.steps.push({index:stepIdx,load:st.load,label:st.label,started_at:mark.started_at});
+  stepStarted=Date.now();stepEnds=stepStarted+st.s*1000;lastSpoken='';
+  $('stage').className='stage '+st.load;$('instr').textContent=st.label;
+  $('stepNo').textContent=`Etapa ${stepIdx+1} de ${plan.length}`;
+  const nx=plan[stepIdx+1];$('next').textContent=nx?`Próximo: ${nx.label}`:'Próximo: fim do teste';
+  beep(1046,220);say(st.label+(st.load==='press'?'':'. Não encoste durante a contagem.'));
+}
+function tick(){
+  if(stepIdx<0||stepIdx>=plan.length)return;
+  const left=Math.max(0,Math.ceil((stepEnds-Date.now())/1000));const st=plan[stepIdx];
+  $('count').textContent=left;
+  $('progress').style.width=(100*(Date.now()-stepStarted)/(st.s*1000)).toFixed(1)+'%';
+  const nx=plan[stepIdx+1];
+  if(left===5&&lastSpoken!=='5'&&st.s>=15){lastSpoken='5';say(nx?`Em cinco segundos: ${nx.label}`:'Em cinco segundos o teste termina');}
+  if(left<=3&&left>=1&&lastSpoken!==String(left)){lastSpoken=String(left);beep(740,90);}
+  if(Date.now()>=stepEnds){const i=stepIdx;stepIdx=plan.length+1;nextStepFrom(i);}
+  $('runInfo').textContent=`Total restante ≈ ${Math.ceil((plan.slice(stepIdx+1).reduce((a,b)=>a+b.s,0)*1000+(stepEnds-Date.now()))/60000)} min`;
+}
+async function nextStepFrom(i){stepIdx=i;await nextStep();}
+async function stop(cancelled){
+  clearInterval(timer);timer=null;
+  try{session=await api(`/api/sessions/${session.id}/finish${cancelled?'?cancelled=true':''}`);}catch(e){}
+  $('run').hidden=true;$('setup').hidden=false;
+  if(cancelled){say('Teste cancelado.');$('result').innerHTML='Teste cancelado; etapas registradas foram mantidas no arquivo da sessão.';return;}
+  say('Teste concluído. Aguarde o cálculo.');beep(523,300);
+  $('result').textContent='Aguardando as últimas leituras para calcular…';
+  setTimeout(()=>showResult(session.id),15000);
+}
+async function showResult(id){
+  const r=await fetch(`/api/sessions/${id}/result`);if(!r.ok){$('result').textContent='Erro no cálculo: '+await r.text();return;}
+  const d=await r.json();const a=d.analysis;let html='';
+  const rows=d.steps.map(s=>`<tr><td>${s.index+1}. ${s.label}</td><td>${s.n}</td><td>${s.median??'—'}</td></tr>`).join('');
+  const steps=`<table><tr><th>Etapa</th><th>Leituras</th><th>Mediana (contagens)</th></tr>${rows}</table>`;
+  const temp=d.temperature?`Temperatura durante o teste: ${fmt(d.temperature.min)}–${fmt(d.temperature.max)} °C.`:'';
+  if(d.session.kind==='calibration'){
+    if(!a.ok){html=`<div class="verdict bad">Calibração incompleta</div><p>${a.reason||''}</p>`;}
+    else{
+      calibratedFactor=a.factor;$('factor').value=a.factor.toFixed(4);
+      const cls=a.repeatability_g<=2?'good':'warn';
+      html=`<div class="verdict ${cls}">Fator ${fmt(a.factor,4)} contagens/g · zero ${fmt(a.offset,0)} contagens</div>
+      <p>Repetibilidade entre as ${a.repeats} cargas: <b>${fmt(a.repeatability_g,2)} g</b> na massa de ${fmt(a.mass_g)} g ${a.repeatability_g<=2?'(boa)':'(alta — repita com mais cuidado)'}.</p>
+      <table><tr><th>Carga</th><th>Δ contagens</th><th>Fator</th><th>Deriva do vazio</th></tr>${a.factors.map(f=>`<tr><td>etapa ${f.step+1}</td><td>${fmt(f.delta_counts,0)}</td><td>${fmt(f.factor,4)}</td><td>${fmt(f.empty_drift_counts/a.factor,1)} g</td></tr>`).join('')}</table>
+      <p class="note">O fator já foi preenchido para o teste de retirada. Para gravar zero e fator na placa, envie estes números ao Claude: o painel não grava a placa.</p>`;
+    }
+  }else if(d.session.kind==='withdrawal'){
+    const cls=a.approved?'good':'bad';
+    html=`<div class="verdict ${cls}">${a.within_2g} de ${a.total} retiradas com erro ≤ 2 g — ${a.approved?'critério atendido':'critério não atendido (≥ 9 de 10)'}</div>
+    <table><tr><th>Retirada</th><th>Medido (g)</th><th>Erro (g)</th></tr>${a.reps.map((x,i)=>`<tr><td>${i+1}</td><td>${fmt(x.removed_g,1)}</td><td class="${Math.abs(x.error_g)<=2?'good':'bad'}">${fmt(x.error_g,1)}</td></tr>`).join('')}</table>
+    <p class="note">Estabilização em até 10 s não é avaliável com leituras a cada 10 s.</p>`;
+  }else{
+    if(!a.ok){html='<div class="verdict bad">Leituras insuficientes</div>';}
+    else{const cls=a.max_abs_g<=3?'good':'bad';
+    html=`<div class="verdict ${cls}">Maior diferença após soltar: ${fmt(a.max_abs_g,1)} g ${a.max_abs_g<=3?'— tampa livre':'— possível atrito; confira a folga da tampa'}</div>
+    <table><tr><th>Após apertar</th><th>Diferença (g)</th></tr>${a.returns.map((x,i)=>`<tr><td>${i+1}ª vez</td><td>${fmt(x.diff_g,1)}</td></tr>`).join('')}</table>`;}
+  }
+  $('result').innerHTML=html+`<p class="note">${temp}</p><details><summary>Etapas</summary>${steps}</details>`;
+}
+
+syncSetup();poll();setInterval(poll,2000);
+</script>
+</body>
+</html>

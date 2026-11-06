@@ -18,6 +18,7 @@ Credenciais em `.env`, certificados em `.local/certs`, dados/modelos locais fora
 | --- | --- |
 | API | http://127.0.0.1:8000/docs — Bearer API_TOKEN |
 | Grafana | http://127.0.0.1:3000/d/tcc-ingestion — admin/GRAFANA_ADMIN_PASSWORD |
+| Painel de bancada | http://127.0.0.1:8090 — leituras ao vivo e testes guiados de pesagem (serviço `bench-ui`) |
 | MQTT | porta 8883 na rede local (ESP32) — TLS, autenticação e ACL por dispositivo |
 | PostgreSQL | Rede Docker, sem porta publicada |
 
@@ -93,3 +94,7 @@ O ESP32 publica pelo Wi-Fi no broker do notebook; o notebook fica ligado com Doc
 4. Compilar: `docker run --rm -v <repo>/firmware:/project -w /project espressif/idf:v5.5.1 idf.py -D SDKCONFIG=/project/build/sdkconfig build`.
 5. Gravar (migra do sketch Arduino; exige backup completo verificado): `python tools/flash_firmware.py --provision .local/provision-esp32-01/nvs --backup-manifest .local/backups/esp32-com5-20261104-fator20/manifest.json` com `PYTHONPATH=.local/bench-tools/python`. Apaga só NVS/PHY e journal/events/provision, grava e mostra 60 s de serial. Voltar ao sketch: regravar `flash-4mb.bin` do backup.
 6. Conferir no Grafana (origem `physical`, experimento `tcc-2026`) a seção ao vivo. Telemetria a cada 60 s; até ~40 min ficam em RAM durante queda de rede.
+
+## Painel de bancada (testes de pesagem)
+
+`bench-ui` (`backend/app/bench.py`, página em `backend/app/bench_static/`) mostra as últimas leituras físicas do `esp32-01` (atualização a cada 2 s) e guia três testes com contagem regressiva, voz pt-BR e bipes: pressão da tampa, calibração (vazio/carga ×3) e retirada de 50 g ×10. Cada etapa recebe horário do servidor; sessões ficam em `data/raw/sessoes-balanca/` (fora do Git, `trial_eligible=false`). Resultados usam a mediana das contagens HX711 de cada etapa, descartando os primeiros 15 s; a calibração usa o vazio antes e depois de cada carga para cancelar deriva linear. Leitura do banco apenas; nada é gravado na placa (zero/fator seguem pelo provisionamento). Com telemetria a cada 10 s, a estabilização em até 10 s não é avaliável. Grafana continua sendo a visualização do ensaio.

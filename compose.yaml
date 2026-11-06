@@ -106,6 +106,21 @@ services:
       mosquitto:
         condition: service_started
     restart: unless-stopped
+  bench-ui:
+    # Local bench page: live readings and guided weighing tests (read-only DB; sessions as files).
+    image: tcc-irrigacao-backend:local
+    pull_policy: never
+    command: [uvicorn, app.bench:app, --host, 0.0.0.0, --port, '8090']
+    environment:
+      DATABASE_URL: postgresql://irrigation_app:${APP_DATABASE_PASSWORD:?execute bootstrap}@postgres:5432/irrigation
+      BENCH_DEVICE: esp32-01
+      BENCH_SESSIONS: /sessions
+    ports: ['127.0.0.1:8090:8090']
+    volumes: ['./data/raw/sessoes-balanca:/sessions']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
   grafana:
     image: grafana/grafana:12.2.0@sha256:74144189b38447facf737dfd0f3906e42e0776212bf575dc3334c3609183adf7
     environment:
