@@ -57,4 +57,8 @@ int main(){
  DurableBuffer persistent(3,event_disk,checkpoint);assert(persistent.push_cycle(accepted_payload,"accepted"));for(int i=0;i<500;++i){assert(!persistent.push_cycle("unrelated","rejected"));}assert(persistent.push_cycle("started","started"));assert(persistent.push_cycle("failed","failed"));
  DurableBuffer restored(3,event_disk,checkpoint);assert(*restored.front()==accepted_payload);assert(restored.acknowledged());assert(*restored.front()=="started");event_ok=false;assert(!restored.acknowledged());assert(event_disk.front()=="started");
  MemoryJournal dj;Pump dp;Controller durable_controller(l,dj,dp,{},[](const Event&){return false;});s={true,40,100,0,4000,true,1000};durable_controller.connectivity(true);durable_controller.synchronize(4000);assert(!durable_controller.submit({"accepted-storage-failed",4000,4010,10,5},s,4000));assert(dp.starts==0);
+ // Board clock may lag the server: up to clock_skew_s ahead is accepted, beyond that it is a future command.
+ {MemoryJournal j2;Pump p2;Controller c2(l,j2,p2);Sensors s2{true,40,100,0,100,true,1000};c2.connectivity(true);assert(c2.synchronize(0));
+  assert(!c2.submit({"far",106,200,10,5},s2,100));assert(c2.events.back().reason=="expired_or_future");
+  assert(c2.submit({"skew",105,200,10,5},s2,100));assert(p2.enabled);}
 }

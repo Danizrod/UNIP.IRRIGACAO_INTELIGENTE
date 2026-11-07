@@ -63,4 +63,16 @@ int main(){
  at(1007,-620,false);r2.tick(sensors,1007);at(1009,-620,true);r2.tick(sensors,1009);
  assert(e2.back().second.status=="completed"&&e2.back().second.reason=="withdrawal_not_measured"&&!e2.back().second.withdrawn_ml&&*r2.reservoir()==210);
  at(1030,-620,true);r2.tick(sensors,1030);assert(!r2.submit(1,{"low",1030,1040,20,5},sensors[1],1030));assert(e2.back().second.reason=="insufficient_water");
+ // Persistence: restored at boot, max dose saved at start (survives a reboot mid-dose), refund after
+ // the measured withdrawal; a failed save makes the reservoir unknown (blocks dosing).
+ JournalMock j3;DriverMock d3;std::vector<std::pair<std::optional<double>,double>> saved;bool storage_ok=true;
+ SharedRig r3(units,limits,j3,d3,[&](){return "l3-"+std::to_string(++ids);},[&](size_t,const Event&){return true;},20,2);
+ r3.restore_reservoir(700,200,[&](std::optional<double> ml,double reserve){saved.push_back({ml,reserve});return storage_ok;});
+ assert(*r3.reservoir()==700&&r3.reserve()==200&&saved.empty());
+ at(2000,-300,true);r3.connectivity(true);r3.tick(sensors,2000);at(2002,-300,true);r3.tick(sensors,2002);assert(r3.synchronize(2002));
+ assert(r3.submit(0,{"persisted",2002,2020,40,5},sensors[0],2002));assert(*saved.back().first==650);
+ at(2007,-338,false);r3.tick(sensors,2007);at(2009,-338,true);r3.tick(sensors,2009);
+ assert(e2.size()&&*r3.reservoir()==662&&*saved.back().first==662);
+ storage_ok=false;assert(!r3.set_reservoir(900,200));assert(!r3.reservoir());
+ at(2040,-338,true);r3.tick(sensors,2040);assert(!r3.submit(1,{"unsaved",2040,2050,20,5},sensors[1],2040));
 }

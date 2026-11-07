@@ -188,6 +188,8 @@ def evaluate(device_id, request_id, unit_id=None, experiment_id=None):
         fresh = telemetry is not None and 0 <= (now-telemetry.collected_at).total_seconds() <= config.max_telemetry_age_s
         latch = hysteresis_state(config,telemetry,prior_latch) if fresh else prior_latch
         act, reason = decide(config,telemetry,now,previous['issued_at'] if previous else None,prediction,bool(active),os.environ.get('SIMULATION_CONTROL_ENABLED') == 'true', latch)
+        if act and config.treatment == 'T3' and reason == 'prediction_below_low':
+            latch = True  # anticipated start keeps dosing (interval permitting) until observed >= soil_high
         result = {'request_id': str(request_id), 'device_id':device_id, 'experiment_id':config.experiment_id,'unit_id':config.unit_id, 'reason':reason, 'actuate':act, 'telemetry_message_id':str(telemetry.message_id) if telemetry else None, 'prediction_id':str(prediction.prediction_id) if prediction else None, 'command_id':None, 'configuration_key':config_key, 'hysteresis_latched':latch}
         if act:
             command = IrrigationCommand(command_id=uuid4(),decision_id=request_id,device_id=device_id,experiment_id=config.experiment_id,unit_id=config.unit_id,treatment=config.treatment,source=config.source,issued_at=now,expires_at=now+timedelta(seconds=60),target_volume_ml=config.target_volume_ml,max_duration_s=config.max_duration_s,reason=reason,model_version=prediction.model_version if prediction and config.treatment=='T3' and reason=='prediction_below_low' else None)

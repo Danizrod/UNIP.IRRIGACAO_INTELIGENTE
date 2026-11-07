@@ -51,6 +51,13 @@ td:first-child,th:first-child{text-align:left}
 .verdict{font-weight:700;font-size:17px;margin:6px 0}
 .good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}
 .note{font-size:13px;color:var(--muted);margin-top:8px}
+.res{display:grid;gap:14px;grid-template-columns:1fr}
+@media(min-width:760px){.res{grid-template-columns:1fr 1fr}}
+.alert{border-radius:10px;padding:10px 12px;font-weight:600;border:1px solid var(--line)}
+.alert.ok{color:var(--good)}.alert.low{color:var(--warn);border-color:var(--warn)}.alert.empty,.alert.unknown{color:var(--bad);border-color:var(--bad)}
+.gauge{height:14px;background:var(--line);border-radius:7px;overflow:hidden;position:relative;margin-top:10px}
+.gauge>div{height:100%;background:var(--accent)}
+.gauge>span{position:absolute;top:0;bottom:0;width:2px;background:var(--bad)}
 code{font-family:var(--mono);font-size:13px}
 </style>
 </head>
@@ -68,6 +75,26 @@ code{font-family:var(--mono);font-size:13px}
       <div class="card"><div class="small" id="soilLabel0">Solo pot-01</div><div class="big" id="soil0">—</div><div class="small" id="soilInfo0">ADC bruto (maior = mais seco)</div></div>
       <div class="card"><div class="small" id="soilLabel1">Solo pot-02</div><div class="big" id="soil1">—</div><div class="small" id="soilInfo1">ADC bruto</div></div>
       <div class="card"><div class="small" id="soilLabel2">Solo pot-03</div><div class="big" id="soil2">—</div><div class="small" id="soilInfo2">ADC bruto</div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Reservatório (estimativa)</h2>
+    <div class="res">
+      <div>
+        <div class="big" id="resMl">—</div>
+        <div class="small" id="resInfo">Estimativa da placa: volume registrado na última reposição − água retirada em cada dose. Não é a leitura absoluta da balança.</div>
+        <div class="gauge" aria-hidden="true"><div id="resBar" style="width:0"></div><span id="resReserve" style="left:0"></span></div>
+        <div class="alert unknown" id="resAlert" style="margin-top:12px">Aguardando dados…</div>
+      </div>
+      <div>
+        <label for="refTotal">Volume total no reservatório depois de completar (mL, medido no copo medidor)</label>
+        <input id="refTotal" type="number" step="10" min="1" max="3000" placeholder="ex.: 1000">
+        <label for="refReserve">Reserva mínima que nunca é usada (mL)</label>
+        <input id="refReserve" type="number" step="10" min="0" max="1000" value="200">
+        <div class="row"><button class="primary" id="refBtn">Registrar reposição</button><span class="small" id="refStatus"></span></div>
+        <div class="note">Complete só com as bombas paradas. O registro vai para a placa pelo MQTT e fica salvo em <code>data/raw/reposicoes</code>; a confirmação aparece quando a placa devolver a estimativa nova.</div>
+      </div>
     </div>
   </section>
 
@@ -120,6 +147,30 @@ const $=id=>document.getElementById(id);
 const fmt=(v,d=1)=>v==null||!isFinite(v)?'—':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
 let live=null,session=null,plan=[],timer=null,stepIdx=-1,stepEnds=0,stepStarted=0,lastSpoken='',calibratedFactor=null,advancing=false;
 
+// ---------- reservatório ----------
+let pendingRefill=null,lastLevel=null;
+function renderReservoir(){
+  const v=live.reservoir||{known:false,level:'unknown',message:'Sem dados.'};
+  $('resAlert').className='alert '+v.level;$('resAlert').textContent=v.message;
+  if(v.known){
+    $('resMl').textContent=fmt(v.ml,0)+' mL';
+    $('resInfo').textContent=`Utilizável acima da reserva: ${fmt(v.usable_ml,0)} mL (reserva ${fmt(v.reserve_ml,0)} mL).`;
+    const full=Math.max(v.ml,1000);$('resBar').style.width=(100*v.ml/full)+'%';$('resReserve').style.left=(100*v.reserve_ml/full)+'%';
+  }else{$('resMl').textContent='desconhecido';$('resBar').style.width='0';}
+  if(pendingRefill&&v.ref===pendingRefill){$('refStatus').textContent='Confirmado pela placa.';pendingRefill=null;}
+  if(lastLevel!==null&&v.level!==lastLevel&&(v.level==='low'||v.level==='empty')){beep(523,300);say(v.message);}
+  lastLevel=v.level;
+}
+$('refBtn').addEventListener('click',async()=>{
+  const total=Number($('refTotal').value),reserve=Number($('refReserve').value);
+  if(!(total>0)||!(reserve>=0)||reserve>=total){alert('Informe o volume total (mL) e uma reserva menor que ele.');return;}
+  if(!confirm(`Registrar ${total} mL no reservatório (reserva ${reserve} mL)? Confirme que as bombas estão paradas.`))return;
+  $('refBtn').disabled=true;$('refStatus').textContent='Enviando…';
+  try{const d=await api('/api/reservoir',{total_ml:total,reserve_ml:reserve});pendingRefill=d.refill_id;$('refStatus').textContent='Enviado; aguardando a placa confirmar (até ~1 leitura).';}
+  catch(e){$('refStatus').textContent='Falhou: '+e.message;}
+  finally{$('refBtn').disabled=false;}
+});
+
 // ---------- leituras ao vivo ----------
 async function poll(){
   try{
@@ -135,6 +186,7 @@ function render(){
   const age=Math.min(...units.map(u=>u.age_s));
   setConn(age<=30?'ok':age<=120?'late':'off',age<=30?`ao vivo · última leitura há ${Math.round(age)} s`:`sem dados há ${Math.round(age)} s`);
   const p=units[0].payload;
+  renderReservoir();
   $('mass').textContent=p.reservoir_mass_g==null?'—':fmt(p.reservoir_mass_g)+' g';
   $('massInfo').textContent=`oscilação em 1 s: ${fmt(p.scale_span_g)} g · ${p.mass_stable?'estável':'instável'} · contagens ${p.scale_counts??'—'}`;
   $('temp').textContent=p.temperature_c==null?'—':fmt(p.temperature_c)+' °C';

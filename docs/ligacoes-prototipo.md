@@ -152,3 +152,12 @@ Sessões em `data/raw/sessoes-balanca/` (fora do Git), recalculadas das contagen
 - **Pendente antes do ensaio:** retirada de 50 g × 10 com o reservatório na carga de trabalho (~1,2 kg), etapas mais longas e fator 20,356. A pesagem por diferença ainda **não está aprovada**.
 
 Painel corrigido: as etapas não são mais puladas quando a marcação demora (testado com 0,9 s de atraso); o fator sugerido é o gravado na placa (deduzido só de leituras da calibração atual); sessões abertas de páginas recarregadas ficam `abandoned`.
+
+### Firmware `physical-telemetry-2` e testes na placa (06–07/11/2026, só LED, bombas ausentes)
+
+- **Entradas do controle:** o firmware passa ao controle o índice do solo calibrado e a mediana da balança. Como solo e limites ainda não estão calibrados, nenhum comando atua. Pilha da tarefa principal aumentada de 3.584 para 8.192 bytes: a 1ª gravação reiniciava em loop por estouro de pilha.
+- **Reservatório:** registro de 1.000/200 mL confirmado pela telemetria e **mantido após reset**. Depois do teste, foi registrado 0 mL (reservatório ainda não montado).
+- **Broker parado por 78 s:** as 13 leituras do período chegaram depois da reconexão, sem lacuna.
+- **Comandos de teste publicados direto no tópico (fora do despachante):** sem calibração, tratamento trocado, vencido e volume acima do limite foram todos rejeitados, com **0 eventos `started`**. Os eventos de comandos desconhecidos ficam em `rejected_messages`.
+- **Relógio:** um comando novo era recusado como "futuro" porque o relógio da placa fica ~1 s atrás do servidor. Agora o firmware aceita até 5 s de diferença (`clock_skew_s`).
+- **Falta testar com as bombas e calibrações:** ciclo completo, reset no meio da dose (desconto da dose máxima), queda de Wi-Fi durante a dose e leitura inválida durante a dose. Até lá, esses casos têm só os testes de host.

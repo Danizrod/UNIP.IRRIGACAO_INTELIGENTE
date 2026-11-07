@@ -20,7 +20,7 @@ Base metodológica: [NIST — princípios de delineamento](https://itl.nist.gov/
 - Aquisição proposta: leitura por vaso a cada 60 s; pesagem/corrente mais frequentes durante ciclos, frequência final definida por ensaio de ruído e resposta. DHT22 comum, sem atribuir três medições ambientais independentes.
 - Piloto anterior ao ensaio: medir secagem e resposta a doses pequenas, drenagem, vazão e tempo de estabilização. Definir faixa operacional do índice relativo e histerese maior que a oscilação de medição. Não chamar esse índice de umidade volumétrica.
 - T1: escolher dose e intervalo com base na demanda do piloto, congelar ambos; referência competente, sem excesso proposital para favorecer T2/T3.
-- T2: dose calibrada, limite inferior e rearme superior; verificar que a lógica rearmará no piloto. T3: mesma faixa/dose/proteções, antecipação baseada na previsão de seis horas. Modelo prevê solo observado sob a política coletada, não secagem sem irrigação.
+- T2: dose calibrada, limite inferior e rearme superior; verificar que a lógica rearmará no piloto. T3: mesma faixa/dose/proteções, antecipação baseada na previsão de 30 min (ver especificação abaixo). Modelo prevê solo observado sob a política coletada, não secagem sem irrigação.
 - Mesmos limites de segurança (água mínima, dose máxima, duração máxima e intervalo mínimo) para todos. Valores dependem dos componentes e das medições; não importar limites sintéticos.
 - Congelar parâmetros, modelo, critérios de validade e protocolo antes do início. Contingência de T3 identificada separadamente, inclusive tempo operando sem previsão.
 
@@ -33,9 +33,20 @@ Reservatório de ~1 L para os três vasos: ~800 mL úteis acima da reserva míni
 - **Reserva do reservatório por contabilidade:** água disponível = volume registrado na reposição − retiradas medidas (dose máxima quando não medida). Sem reposição registrada, nenhum ciclo é aceito (`insufficient_water`).
 - T1: horários fixos com número de doses = consumo médio diário do piloto ÷ dose (ex.: 150 mL/dia → 07h, 12h, 17h).
 - T2: abaixo do limite inferior, uma dose; aguardar o intervalo mínimo e repetir enquanto o índice não atingir o limite superior (parada pelo alvo exigida no pré-projeto). Faixa e histerese definidas no piloto.
-- T3: mesma dose, faixa, parada e proteções do T2, antecipadas pela previsão de 30 min (código alinhado ao pré-projeto em 05/11; confirmar no piloto).
-- Proteções comuns: intervalo mínimo de 45 min por vaso, máximo de 300 mL/vaso/dia, duração máxima 2× o tempo calibrado e teto de 10 s, bloqueio com reservatório < 200 g de água, uma bomba por vez.
+- T3: mesma dose, faixa, parada e proteções do T2, antecipadas pela previsão de 30 min (especificação definida em 06/11, abaixo).
+- Proteções comuns: intervalo mínimo de 45 min por vaso, máximo de 300 mL/vaso/dia, duração máxima 2× o tempo calibrado e teto de 10 s, reserva mínima de 200 mL nunca dosada (contabilidade do reservatório), uma bomba por vez.
 - Aprovação da pesagem (carga de trabalho ~1,2 kg): deriva ≤ 1 g em qualquer janela de 5 min num registro ≥ 2 h; carga estática de ~1,2 kg por 30 min com variação ≤ 2 g; retirada de 50 g repetida 10 vezes com erro ≤ 2 g em ao menos 9 e estabilização em até 10 s; capacidade dos sensores confirmada acima da carga. Usar referência melhor que o celular. Resultado de 05/11: deriva reprovada (~20 g/°C; ver [ligações](ligacoes-prototipo.md#registro-noturno-sem-carga-0405112026)); consumo só por diferença antes/depois de cada ciclo, e reserva mínima não pode depender apenas da massa absoluta.
+
+### Especificação do T3 (definida em 06/11/2026, congelar antes do início)
+
+- **Alvo:** índice relativo do solo do vaso T3 (`pot-03`) 30 min à frente (`HORIZON_S=1800`), observado sob a política em uso. Não representa secagem sem irrigação.
+- **Atributos:** `soil_index`, `temperature_c`, `humidity_pct`, `hour_sin`, `hour_cos` (leitura atual). Sem meteorologia externa: a bancada é coberta.
+- **Dados de treino:** somente físicos, do piloto do próprio vaso T3, com a mesma calibração de solo do ensaio, telemetria a 60 s e T3 operando por histerese (regra do T2) durante o piloto. Mínimo técnico: 60 pares válidos. Alvo: ≥ 48 h de piloto com ciclos de rega. Nenhum dado do período de comparação entra no treino.
+- **Seleção:** Ridge, Random Forest, Gradient Boosting e XGBoost (hiperparâmetros fixos em `backend/app/ml.py`), com validação temporal em 3 dobras com expurgo e MAE como critério. O vencedor é refeito nos 80 % iniciais e avaliado nos 20 % finais contra a persistência.
+- **Implantação:** o vencedor é implantado e congelado mesmo que não supere a persistência; nesse caso, registrar como limitação, sem trocar o modelo durante o ensaio. A versão (`model_version`) vai em cada comando antecipado.
+- **Decisão (determinística):** inicia quando a previsão é ≤ limite inferior. Após o início antecipado, a trava (latch) só é liberada quando o índice **observado** atinge o limite superior, igual ao T2. Valem a mesma dose, intervalo mínimo, teto diário e proteções do T2.
+- **Contingência:** sem previsão válida, o T3 não rega (`prediction_unavailable`), a menos que `prediction_fallback_enabled` seja aprovado. Sem o serviço de decisão por mais de 90 s, o firmware usa a histerese local. Ambos os casos ficam registrados com o tempo correspondente.
+- **Limitação:** piloto curto, n = 1 por tratamento, modelo de um único vaso. Os resultados não generalizam.
 
 ## Reservatório e medidores compartilhados
 
@@ -57,7 +68,7 @@ Resultado principal: água retirada acumulada por vaso na janela válida comum, 
 
 - Por vaso/tratamento: água e energia acumuladas e diárias, quantidade/duração de ciclos, solo na faixa e fora dela, validade/cobertura de dados, erros/falhas e espera na fila.
 - Economia observada: `100 × (1 − consumo_Tx / consumo_T1)` na mesma janela com cobertura comparável; T1=0 gera resultado indefinido. Mostrar consumo bruto e ciclos sem medição válida; não apresentar economia completa quando consumo está ausente.
-- T3: MAE/RMSE contra observação válida de seis horas depois, pareada por vaso/calibração/modelo; avaliar teste temporal separado do treinamento. Mostrar quantidade de pares válidos e cobertura, sem erro fictício para alvos ausentes.
+- T3: MAE/RMSE contra observação válida 30 min depois, pareada por vaso/calibração/modelo; avaliar teste temporal separado do treinamento. Mostrar quantidade de pares válidos e cobertura, sem erro fictício para alvos ausentes.
 - Falhas/intervenções: identidade, horário, motivo, responsável, efeito na medição, início/fim e ação tomada. Incluir reposição, manutenção, reboot, contingência, leituras inválidas, perda de dados e ciclo incompleto.
 - Manter dados brutos e metadados. Estatística de dias/ciclos descreve a série observada; não é evidência de replicação biológica.
 

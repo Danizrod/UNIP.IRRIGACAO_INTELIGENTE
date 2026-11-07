@@ -100,5 +100,21 @@ class BenchSessionTests(unittest.TestCase):
                 bench.SESSIONS = old
 
 
+class ReservoirTests(unittest.TestCase):
+    def test_status_levels(self):
+        self.assertEqual(bench.reservoir_status(dict(reservoir_ml=None))['level'], 'unknown')
+        self.assertEqual(bench.reservoir_status(None)['level'], 'unknown')
+        ok = bench.reservoir_status(dict(reservoir_ml=1000, reservoir_reserve_ml=200, reservoir_ref='x'))
+        self.assertEqual((ok['level'], ok['doses'], ok['usable_ml']), ('ok', 16, 800))
+        self.assertEqual(bench.reservoir_status(dict(reservoir_ml=320, reservoir_reserve_ml=200))['level'], 'low')
+        self.assertEqual(bench.reservoir_status(dict(reservoir_ml=240, reservoir_reserve_ml=200))['level'], 'empty')
+
+    def test_refill_message_matches_firmware_checks(self):
+        msg = bench.refill_message(bench.Refill(total_ml=1000, reserve_ml=200), '00000000-0000-4000-8000-000000000000', T0)
+        self.assertEqual(msg['schema_version'], 1)
+        self.assertEqual(datetime.fromisoformat(msg['expires_at']) - datetime.fromisoformat(msg['issued_at']), timedelta(minutes=5))
+        self.assertTrue(msg['issued_at'].endswith('+00:00'))
+
+
 if __name__ == '__main__':
     unittest.main()

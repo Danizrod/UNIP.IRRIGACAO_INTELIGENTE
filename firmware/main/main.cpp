@@ -78,6 +78,17 @@ static bool save_events(const std::deque<std::string>& pending){
  size_t used=offsetof(EventCheckpoint,messages)+state.count*sizeof(state.messages[0]);
  return nvs_set_blob(event_handle,"pending",&state,used)==ESP_OK&&nvs_commit(event_handle)==ESP_OK;
 }
+// Reservoir accounting (refill reference minus doses) survives reboots in the journal partition.
+struct ReservoirState {uint32_t version=1;uint32_t known=0;double ml=0,reserve_ml=0;char refill_id[37]={};};
+static ReservoirState reservoir_state;
+static void load_reservoir(){
+ size_t length=sizeof(reservoir_state);
+ if(!journal_handle||nvs_get_blob(journal_handle,"reservoir",&reservoir_state,&length)!=ESP_OK||length!=sizeof(reservoir_state)||reservoir_state.version!=1||!memchr(reservoir_state.refill_id,0,sizeof(reservoir_state.refill_id)))reservoir_state=ReservoirState{};
+}
+static bool save_reservoir(std::optional<double> ml,double reserve_ml){
+ reservoir_state.known=ml.has_value();reservoir_state.ml=ml.value_or(0);reservoir_state.reserve_ml=reserve_ml;
+ return journal_handle&&nvs_set_blob(journal_handle,"reservoir",&reservoir_state,sizeof(reservoir_state))==ESP_OK&&nvs_commit(journal_handle)==ESP_OK;
+}
 static SharedRig* controller=nullptr;
 static esp_mqtt_client_handle_t mqtt=nullptr;
 static std::string device,broker,username,password,ca,ssid,wifi_password,ntp,experiment;
@@ -88,7 +99,7 @@ static Buffer<Message> outbox(120);
 static DurableBuffer* durable_events=nullptr;
 static std::array<Sensors,3> sensors; // Invalid by default; no fabricated physical measurements.
 // Physical acquisition settings from `provision`; absent calibration => null values, never defaults.
-static constexpr const char* firmware_version="physical-telemetry-1";
+static constexpr const char* firmware_version="physical-telemetry-2";
 static constexpr double mass_stable_span_g=5; // Provisional: ~1 g noise observed on 04/11.
 static ScaleCalibration scale_calibration;
 static std::array<RelativeSoilCalibration,3> soil_calibration;
@@ -162,6 +173,9 @@ static void queue_physical_telemetry(const hardware::Snapshot& h,int64_t now){
   if(mass){double span_g=std::fabs(h.scale_span/scale_calibration.counts_per_g);cJSON_AddNumberToObject(j,"scale_span_g",span_g);cJSON_AddBoolToObject(j,"mass_stable",span_g<=mass_stable_span_g);}
   else{cJSON_AddNullToObject(j,"scale_span_g");cJSON_AddNullToObject(j,"mass_stable");}
   if(scale_calibration.valid())cJSON_AddStringToObject(j,"scale_calibration_id",scale_calibration.id.c_str());
+  // Shared reservoir estimate (accounting, not weighing); null until a refill is registered.
+  add_optional(j,"reservoir_ml",controller?controller->reservoir():std::nullopt);
+  if(controller&&controller->reservoir()){cJSON_AddNumberToObject(j,"reservoir_reserve_ml",controller->reserve());cJSON_AddStringToObject(j,"reservoir_ref",reservoir_state.refill_id);}
   int channel=ina_channel[i];
   bool power=channel>=0&&power_fresh&&h.power[channel].has_value();
   add_optional(j,"pump_voltage_v",power?std::optional<double>(h.power[channel]->bus_v):std::nullopt);
@@ -196,7 +210,7 @@ static void acknowledge_message(){
 static void mqtt_event(void*,esp_event_base_t,int32_t id,void*data){
  xSemaphoreTake(mutex,portMAX_DELAY);
  auto e=static_cast<esp_mqtt_event_handle_t>(data);
- if(id==MQTT_EVENT_CONNECTED){connected=true;esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/commands").c_str(),1);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/heartbeat").c_str(),0);
+ if(id==MQTT_EVENT_CONNECTED){connected=true;esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/commands").c_str(),1);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/heartbeat").c_str(),0);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/reservoir").c_str(),1);
   // Main loop opens the remote barrier only after subscription/clock/backlog checks.
  }else if(id==MQTT_EVENT_DISCONNECTED){connected=false;subscribed=false;backend_online=false;heartbeat_ms=-1;controller->connectivity(false);}
  else if(id==MQTT_EVENT_SUBSCRIBED){subscribed=true;}
@@ -207,6 +221,22 @@ static void mqtt_event(void*,esp_event_base_t,int32_t id,void*data){
   std::string topic(e->topic,e->topic_len);
   // Arrival time only (monotonic clock); payload content is not trusted for liveness.
   if(topic=="irrigation/v1/"+device+"/heartbeat"){heartbeat_ms=esp_timer_get_time()/1000;xSemaphoreGive(mutex);return;}
+  if(topic=="irrigation/v1/"+device+"/reservoir"){
+   // Refill registration: fresh (<=5 min), for this device/experiment, once per refill_id, pumps off.
+   auto j=cJSON_ParseWithLength(e->data,e->data_len);
+   if(j){
+    auto rid=str(j,"refill_id"),dev=str(j,"device_id"),exp=str(j,"experiment_id");
+    int64_t issued=iso(str(j,"issued_at")),expires=iso(str(j,"expires_at")),now=epoch();double total=num(j,"total_ml"),reserve=num(j,"reserve_ml");
+    bool ok=num(j,"schema_version")==1&&valid_uuid(rid)&&dev&&exp&&device==dev&&experiment==exp&&issued&&expires>issued&&expires-issued<=300&&now>=issued-5&&now<expires
+            &&std::isfinite(total)&&total>=0&&total<=5000&&std::isfinite(reserve)&&reserve>=0&&reserve<=total&&strcmp(rid,reservoir_state.refill_id);
+    if(ok){char previous[37];memcpy(previous,reservoir_state.refill_id,sizeof(previous));strncpy(reservoir_state.refill_id,rid,36);reservoir_state.refill_id[36]=0;
+     if(!controller->set_reservoir(total,reserve)){memcpy(reservoir_state.refill_id,previous,sizeof(previous));ESP_LOGW(TAG,"Refill rejected (cycle running or storage)");}
+     else ESP_LOGI(TAG,"Refill registered: %.0f mL, reserve %.0f mL",total,reserve);}
+    else ESP_LOGW(TAG,"Refill message rejected");
+    cJSON_Delete(j);
+   }
+   xSemaphoreGive(mutex);return;
+  }
   if(topic!="irrigation/v1/"+device+"/commands"){xSemaphoreGive(mutex);return;}
   auto j=cJSON_ParseWithLength(e->data,e->data_len);if(!j){xSemaphoreGive(mutex);return;}
   auto cid=str(j,"command_id"),dev=str(j,"device_id"),source=str(j,"source");
@@ -294,6 +324,9 @@ extern "C" void app_main(){
  static SharedRig core(units,limits,journal,pump,uuid,persist_event,20,2);controller=&core;
 #if CONFIG_IRRIGATION_SIMULATION
  core.set_reservoir(1000,0); // Synthetic reservoir; physical water stays unknown until a registered refill.
+#else
+ load_reservoir();
+ core.restore_reservoir(reservoir_state.known?std::optional<double>(reservoir_state.ml):std::nullopt,reservoir_state.reserve_ml,save_reservoir);
 #endif
 #if !CONFIG_IRRIGATION_SIMULATION
  hardware::start(); // Sensors only; `limits` stays uncalibrated so no command can actuate.
@@ -321,6 +354,16 @@ extern "C" void app_main(){
   if(utc_synced.load())controller->advance(epoch());
   if(pump.channel>=0){shared_removed_ml+=1;auto&s=sensors[pump.channel];s.soil=s.soil<99?s.soil+1:100;} // Synthetic flow/response only.
   for(size_t i=0;i<3;++i){auto&s=sensors[i];if(!s.sampled_at)s.soil=40;else s.soil=s.soil>0.001?s.soil-0.001:0;s.valid=utc_synced.load();s.available_ml=shared_removed_ml<1000?1000-shared_removed_ml:0;s.removed_ml=shared_removed_ml;s.mass_g=1000-shared_removed_ml;s.sampled_at=epoch();s.mass_stable=controller->stable();}
+#endif
+#if !CONFIG_IRRIGATION_SIMULATION
+  // Physical controller inputs: calibrated soil index and the scale's ~1 s median (only compared
+  // within one cycle). Missing/uncalibrated readings stay invalid; limits remain uncalibrated, so
+  // nothing actuates until the pump circuit and calibrations are approved.
+  {auto h=hardware::snapshot();bool soil_fresh=h.soil_at_ms>=0&&h.now_ms-h.soil_at_ms<=3000;
+   auto mass=h.scale_fresh?scale_calibration.grams(h.scale_counts):std::nullopt;
+   bool stable=mass&&std::fabs(h.scale_span/scale_calibration.counts_per_g)<=mass_stable_span_g;
+   for(size_t i=0;i<3;++i){auto&s=sensors[i];auto index=soil_fresh&&h.soil_raw[i]>=0?soil_calibration[i].index(h.soil_raw[i]):std::nullopt;
+    s.valid=index.has_value()&&utc_synced.load();s.soil=index.value_or(0);s.removed_ml=0;s.mass_g=mass.value_or(NAN);s.mass_stable=stable;s.sampled_at=s.valid?epoch():0;}}
 #endif
   if(utc_synced.load())controller->tick(sensors,epoch());
 #if CONFIG_IRRIGATION_SIMULATION

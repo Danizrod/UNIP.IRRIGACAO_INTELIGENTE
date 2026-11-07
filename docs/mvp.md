@@ -32,7 +32,7 @@ A entrega inclui montagem, software, calibração, testes e documentação técn
 
 1. **Medir:** o ESP32 coleta solo e ambiente. Cada leitura identifica dispositivo, vaso, horário, calibração e validade.
 2. **Transmitir:** envia os dados ao backend pelo MQTT. O backend valida e persiste sem duplicar mensagens reenviadas.
-3. **Prever:** no modo preditivo, um modelo previamente treinado estima a umidade no horizonte de seis horas. A previsão registra versão do modelo e condições utilizadas.
+3. **Prever:** no modo preditivo, um modelo previamente treinado estima o índice de umidade no horizonte de 30 min. A previsão registra versão do modelo e condições utilizadas.
 4. **Decidir:** regras determinísticas avaliam previsão, umidade atual, validade dos dados, água disponível e limites de operação. O modelo não liga a bomba diretamente.
 5. **Comandar:** quando necessário, o backend envia um comando identificado, com validade e limites de volume/duração.
 6. **Validar e irrigar:** o ESP32 confere o comando e suas proteções locais. Informa aceitação ou rejeição e, quando executado, início e conclusão do ciclo.

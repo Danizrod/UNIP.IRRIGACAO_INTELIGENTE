@@ -40,8 +40,11 @@ def decide(config: DecisionConfiguration, telemetry: Telemetry | None, now: date
         if config.prediction_fallback_enabled:
             return telemetry.soil_index <= config.soil_low or hysteresis_latched, 'prediction_unavailable_local_threshold_fallback'
         return False, 'prediction_unavailable'
-    dry = prediction.soil_index <= config.soil_low
-    return dry, 'prediction_below_low' if dry else 'prediction_hold'
+    # Same stop rule as T2 (protocol 06/11): a prediction-triggered start latches until the
+    # observed index reaches soil_high; only the start is anticipated by the 30 min forecast.
+    if prediction.soil_index <= config.soil_low:
+        return True, 'prediction_below_low'
+    return (True, 'hysteresis_latched') if hysteresis_latched else (False, 'prediction_hold')
 
 
 def hysteresis_state(config, telemetry, previous=False):

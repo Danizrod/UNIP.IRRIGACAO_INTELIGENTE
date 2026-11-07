@@ -27,12 +27,16 @@ class SharedRig {
  int active_channel=-1;size_t next_local=0;
  // Reservoir water is accounted, not weighed: the refill reference minus each cycle's measured
  // withdrawal (or the maximum dose when it was not measured). Unknown until a refill is registered.
+ // The maximum dose is deducted (and persisted) when a dose starts, so a reboot mid-dose leaves the
+ // pessimistic value; a measured withdrawal then returns the difference. A failed save => unknown.
  std::optional<double> reservoir_ml;double reserve_ml=0,max_dose_ml=0;std::array<bool,3> dosing{};
+ std::function<bool(std::optional<double>,double)> persist;
+ void changed(){if(persist&&!persist(reservoir_ml,reserve_ml))reservoir_ml.reset();}
  void account(size_t channel,const Event&e){
-  if(e.status=="started"){dosing[channel]=true;return;}
+  if(e.status=="started"){dosing[channel]=true;if(reservoir_ml){reservoir_ml=std::max(0.0,*reservoir_ml-max_dose_ml);changed();}return;}
   if(!dosing[channel]||(e.status!="completed"&&e.status!="failed"))return;
   dosing[channel]=false;
-  if(reservoir_ml)reservoir_ml=std::max(0.0,*reservoir_ml-(e.withdrawn_ml?*e.withdrawn_ml:max_dose_ml));
+  if(reservoir_ml&&e.withdrawn_ml){reservoir_ml=std::max(0.0,*reservoir_ml+max_dose_ml-*e.withdrawn_ml);changed();}
  }
  double usable()const{return reservoir_ml?std::max(0.0,*reservoir_ml-reserve_ml):0;}
  int64_t now=0,last_end=0,quiet_until=0,interval_s,settle_s;
@@ -57,9 +61,15 @@ public:
  // Refill registered with all pumps off: water now available and the reserve never dosed.
  bool set_reservoir(double available_ml,double minimum_reserve_ml){
   if(running()||!std::isfinite(available_ml)||!std::isfinite(minimum_reserve_ml)||available_ml<0||minimum_reserve_ml<0)return false;
-  reservoir_ml=available_ml;reserve_ml=minimum_reserve_ml;return true;
+  reservoir_ml=available_ml;reserve_ml=minimum_reserve_ml;changed();return reservoir_ml.has_value();
+ }
+ // Boot: restore the persisted accounting (no save); `save` is then called on every change.
+ void restore_reservoir(std::optional<double> available_ml,double minimum_reserve_ml,std::function<bool(std::optional<double>,double)> save){
+  if(available_ml&&std::isfinite(*available_ml)&&*available_ml>=0&&std::isfinite(minimum_reserve_ml)&&minimum_reserve_ml>=0){reservoir_ml=available_ml;reserve_ml=minimum_reserve_ml;}
+  persist=std::move(save);
  }
  std::optional<double> reservoir()const{return reservoir_ml;}
+ double reserve()const{return reserve_ml;}
  bool running()const{for(auto&c:controls)if(c->running())return true;return false;}
  void advance(int64_t timestamp){now=timestamp;if(!initialized){quiet_until=now+settle_s;initialized=true;}}
  bool stable()const{return initialized&&active_channel<0&&now>=quiet_until;}

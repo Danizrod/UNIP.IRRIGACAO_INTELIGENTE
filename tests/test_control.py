@@ -51,6 +51,11 @@ class ControlTests(unittest.TestCase):
         self.assertTrue(self.run_policy(prediction=pred)[0])
         pred.telemetry_message_id=uuid4()
         self.assertFalse(self.run_policy(prediction=pred)[0])
+        # Latched after an anticipated start: continue until the observed index releases the latch.
+        pred.telemetry_message_id=self.telemetry.message_id
+        pred.soil_index=45
+        self.assertEqual(self.run_policy(prediction=pred),(False,'prediction_hold'))
+        self.assertEqual(self.run_policy(prediction=pred,hysteresis_latched=True),(True,'hysteresis_latched'))
         self.config.prediction_fallback_enabled=True
         self.assertEqual(self.run_policy()[1],'prediction_unavailable_local_threshold_fallback')
 

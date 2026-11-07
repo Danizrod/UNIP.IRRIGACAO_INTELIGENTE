@@ -33,6 +33,7 @@ public:
  void acknowledged(){if(!items.empty())items.pop_front();}
  size_t size()const{return items.size();}
 };
+constexpr int64_t clock_skew_s=5;
 class Controller {
  Limits limits; Journal& journal; Actuator& pump;
  std::optional<Command> active; int64_t started=0,last_end=0,dosed_s=0; double mass_before=0;
@@ -56,7 +57,8 @@ public:
   if(!journal.observe_time(now))reason="clock_or_journal_unavailable";
   else if(c.id.empty()||!std::isfinite(c.volume_ml)||!std::isfinite(c.duration_s))reason="invalid_command";
   else if(journal.contains(c.id))reason="duplicate";
-  else if(c.issued_at>now||c.expires_at<=now||c.expires_at<=c.issued_at||c.expires_at-c.issued_at>300)reason="expired_or_future";
+  // Up to clock_skew_s ahead is NTP skew between server and board (~1 s seen on 06/11), not a future command.
+  else if(c.issued_at>now+clock_skew_s||c.expires_at<=now||c.expires_at<=c.issued_at||c.expires_at-c.issued_at>300)reason="expired_or_future";
   else if(active)reason="busy";
   else if(!local&&(!remote||!synchronized))reason="not_synchronized";
   else if(!local&&c.issued_at<synchronized_at)reason="before_resync";

@@ -18,6 +18,10 @@ from app.store import connect
 
 DEVICE = os.environ.get('BENCH_DEVICE', 'esp32-01')
 SESSIONS = Path(os.environ.get('BENCH_SESSIONS', '/sessions'))
+REFILLS = Path(os.environ.get('BENCH_REFILLS', '/refills'))
+EXPERIMENT = os.environ.get('BENCH_EXPERIMENT', 'tcc-2026')
+DOSE_ML = 50  # Common dose approved on 04/11 (protocol); the alert keeps three doses above the reserve.
+REFILL_ALERT_DOSES = 3
 PAGE = Path(__file__).with_name('bench_static') / 'index.html'
 # Readings right after a load change are discarded: settling plus telemetry delivery delay.
 SETTLE_S = 15
@@ -108,6 +112,24 @@ def press(summary, factor):
     return dict(ok=True, returns=returns, max_abs_g=max(abs(r['diff_g']) for r in returns))
 
 
+def reservoir_status(payload, dose_ml=DOSE_ML):
+    """Estimativa do reservatório informada pela placa (reposição registrada − doses)."""
+    ml = (payload or {}).get('reservoir_ml')
+    if ml is None:
+        return dict(known=False, level='unknown', message='Reservatório desconhecido: registre a reposição (volume total medido).')
+    reserve = payload.get('reservoir_reserve_ml') or 0
+    usable = max(0.0, ml - reserve)
+    doses = int(usable // dose_ml)
+    if usable < dose_ml:
+        level, message = 'empty', 'Abaixo de uma dose: as bombas ficam bloqueadas. Complete o reservatório agora.'
+    elif doses < REFILL_ALERT_DOSES:
+        level, message = 'low', f'Restam ~{doses} dose(s) de {dose_ml:g} mL. Complete o reservatório.'
+    else:
+        level, message = 'ok', f'~{doses} doses de {dose_ml:g} mL disponíveis acima da reserva.'
+    return dict(known=True, level=level, message=message, ml=ml, reserve_ml=reserve, usable_ml=usable,
+                doses=doses, ref=payload.get('reservoir_ref'))
+
+
 # ---------- dados ----------
 
 def scale_samples(since):
@@ -153,7 +175,8 @@ def live(minutes: int = 15):
             """SELECT DISTINCT ON (unit_id) unit_id, treatment, collected_at, received_at, payload
                FROM telemetry WHERE device_id=%s AND source='physical' ORDER BY unit_id, collected_at DESC""", (DEVICE,)).fetchall()
     series = scale_samples(now() - timedelta(minutes=minutes))
-    return dict(server_time=iso(now()), device=DEVICE,
+    newest = max(latest, key=lambda r: r['collected_at'])['payload'] if latest else None
+    return dict(server_time=iso(now()), device=DEVICE, reservoir=reservoir_status(newest),
                 units=[dict(unit_id=r['unit_id'], treatment=r['treatment'], collected_at=iso(r['collected_at']),
                             age_s=(now() - r['received_at']).total_seconds(), payload=r['payload']) for r in latest],
                 series=[dict(at=iso(s['at']), mass=s['mass'], counts=s['counts'], temp=s['temp']) for s in series],
@@ -250,6 +273,48 @@ def sessions():
     items = all_sessions()
     items.sort(key=lambda s: s['started_at'], reverse=True)
     return [dict(id=s['id'], kind=s['kind'], status=s['status'], started_at=s['started_at'], mass_g=s.get('mass_g')) for s in items[:30]]
+
+
+class Refill(BaseModel):
+    total_ml: float = Field(ge=0, le=3000)  # 0 = reservatório vazio/removido
+    reserve_ml: float = Field(ge=0, le=1000)
+    note: str | None = Field(default=None, max_length=300)
+
+
+def refill_message(body, refill_id, at):
+    return dict(schema_version=1, refill_id=refill_id, device_id=DEVICE, experiment_id=EXPERIMENT,
+                total_ml=body.total_ml, reserve_ml=body.reserve_ml, issued_at=iso(at), expires_at=iso(at + timedelta(minutes=5)))
+
+
+@app.post('/api/reservoir')
+def refill(body: Refill):
+    """Registra a reposição: arquivo de intervenção + mensagem MQTT; a placa confirma pela telemetria."""
+    if body.reserve_ml > body.total_ml or (body.total_ml > 0 and body.reserve_ml == body.total_ml):
+        raise HTTPException(422, 'A reserva deve ser menor que o volume total.')
+    import paho.mqtt.client as mqtt
+    at, refill_id = now(), str(uuid.uuid4())
+    message = refill_message(body, refill_id, at)
+    REFILLS.mkdir(parents=True, exist_ok=True)
+    record = dict(message, kind='refill', note=body.note, recorded_at=iso(at), confirmed=False)
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f'tcc-bench-{refill_id[:8]}', clean_session=True)
+    client.username_pw_set('backend', os.environ['MQTT_BACKEND_PASSWORD'])
+    client.tls_set(ca_certs='/certs/ca.crt')
+    try:
+        client.connect(os.environ.get('MQTT_HOST', 'mosquitto'), 8883, keepalive=30)
+        client.loop_start()
+        info = client.publish(f'irrigation/v1/{DEVICE}/reservoir', json.dumps(message), qos=1)
+        info.wait_for_publish(timeout=10)
+        published = info.is_published()
+    except Exception as exc:  # noqa: BLE001 - reported to the page, nothing assumed delivered
+        published, record['error'] = False, str(exc)[:200]
+    finally:
+        client.loop_stop()
+        client.disconnect()
+    record['published'] = published
+    (REFILLS / f'{at:%Y%m%dT%H%M%S}-{refill_id}.json').write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
+    if not published:
+        raise HTTPException(502, 'Broker não confirmou a mensagem; a reposição não foi registrada na placa.')
+    return dict(refill_id=refill_id, published=True)
 
 
 @app.get('/api/sessions/{session_id}/result')

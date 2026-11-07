@@ -43,7 +43,7 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 - [x] Repetir deriva na caixa 3D (06/11: ~39 g/°C, deriva térmica permanece) e adotar pesagem por diferença por ciclo no firmware.
 - [x] Refazer zero/fator na caixa nova (06/11: fator incremental 20,356 pelo copo de 50 g, gravado na placa; pote 600 g dá 22,19, não linearidade ~9 %).
 - [ ] Retirada de 50 g ×10 com o reservatório na carga de trabalho (~1,2 kg) antes de aprovar a pesagem por diferença (06/11: 14/16 em ±2 g a ~550 g).
-- [ ] Alimentar `mass_g` pela balança, registrar reposição por MQTT e persistir a contabilidade do reservatório.
+- [x] Alimentar `mass_g` pela balança, registrar reposição por MQTT e persistir a contabilidade do reservatório (06/11, testado na placa).
 - [x] Implementar drivers de sensores no ESP-IDF e painel ao vivo no Grafana (05/11; compilado, gravação pendente).
 - [x] Gravar firmware na placa e confirmar telemetria física no banco (05/11, Wi-Fi/MQTT TLS a cada 60 s).
 - [ ] Replanejar início/fim dos 30 dias após preparação; testes com LED não contam como ensaio.
@@ -76,7 +76,7 @@ Os itens seguintes exigem integração/validação com os componentes físicos:
 
 ## Dados e aprendizado de máquina
 
-- [x] Implementar exportação, alvo de seis horas e separação temporal com expurgo.
+- [x] Implementar exportação, alvo (hoje 30 min) e separação temporal com expurgo.
 - [x] Implementar comparação de três algoritmos/persistência e modelo JSON versionado.
 - [x] Verificar treinamento, inferência e decisão T3 com dados sintéticos separados.
 
