@@ -13,6 +13,8 @@
 #include "esp_timer.h"
 #include "esp_random.h"
 #include "esp_wifi.h"
+#include "esp_system.h"
+#include "esp_heap_caps.h"
 #include "mqtt_client.h"
 #include "nvs_flash.h"
 #include <cstring>
@@ -99,7 +101,7 @@ static Buffer<Message> outbox(120);
 static DurableBuffer* durable_events=nullptr;
 static std::array<Sensors,3> sensors; // Invalid by default; no fabricated physical measurements.
 // Physical acquisition settings from `provision`; absent calibration => null values, never defaults.
-static constexpr const char* firmware_version="physical-telemetry-2";
+static constexpr const char* firmware_version="physical-telemetry-3";
 static constexpr double mass_stable_span_g=5; // Provisional: ~1 g noise observed on 04/11.
 static ScaleCalibration scale_calibration;
 static std::array<RelativeSoilCalibration,3> soil_calibration;
@@ -116,6 +118,17 @@ static bool backend_online=false;
 static std::atomic<bool> utc_synced{false};
 static void clock_synced(timeval*){utc_synced.store(true);}
 static int in_flight=-1;
+// Delivery health (07-10/11 outages): one unconfirmed message used to block every later publish.
+static constexpr int64_t in_flight_timeout_ms=60000;      // resend (ids make duplicates harmless)
+static constexpr int64_t delivery_watchdog_ms=20*60*1000;  // no PUBACK this long => clean restart
+static int64_t in_flight_since_ms=0,last_delivery_ms=0;
+static uint32_t mqtt_connects=0,wifi_disconnects=0,in_flight_timeouts=0;
+static uint8_t last_wifi_reason=0;
+// 09/11: the board closed the session and then never reached the broker again while Wi-Fi stayed
+// "associated" (no disconnect event). Re-associate (new DHCP/ARP) after 5 min without the broker.
+static constexpr int64_t wifi_kick_ms=5*60*1000;
+static int64_t mqtt_down_since_ms=0,last_wifi_kick_ms=0;
+static uint32_t wifi_kicks=0;
 static bool in_flight_event=false;
 static int early_ack=-1;
 static int early_deleted=-1;
@@ -175,6 +188,15 @@ static void queue_physical_telemetry(const hardware::Snapshot& h,int64_t now){
   if(scale_calibration.valid())cJSON_AddStringToObject(j,"scale_calibration_id",scale_calibration.id.c_str());
   // Shared reservoir estimate (accounting, not weighing); null until a refill is registered.
   add_optional(j,"reservoir_ml",controller?controller->reservoir():std::nullopt);
+  // Link/heap diagnostics for the 07-10/11 outages (same values repeated per unit).
+  cJSON_AddNumberToObject(j,"uptime_s",static_cast<double>(esp_timer_get_time()/1000000));
+  cJSON_AddNumberToObject(j,"reset_reason",static_cast<int>(esp_reset_reason()));
+  cJSON_AddNumberToObject(j,"heap_free_b",static_cast<double>(esp_get_free_heap_size()));
+  cJSON_AddNumberToObject(j,"heap_min_b",static_cast<double>(esp_get_minimum_free_heap_size()));
+  cJSON_AddNumberToObject(j,"heap_largest_b",static_cast<double>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+  {wifi_ap_record_t ap;if(esp_wifi_sta_get_ap_info(&ap)==ESP_OK)cJSON_AddNumberToObject(j,"wifi_rssi_dbm",ap.rssi);else cJSON_AddNullToObject(j,"wifi_rssi_dbm");}
+  cJSON_AddNumberToObject(j,"mqtt_connects",mqtt_connects);cJSON_AddNumberToObject(j,"wifi_disconnects",wifi_disconnects);
+  cJSON_AddNumberToObject(j,"wifi_last_reason",last_wifi_reason);cJSON_AddNumberToObject(j,"publish_timeouts",in_flight_timeouts);cJSON_AddNumberToObject(j,"wifi_kicks",wifi_kicks);
   if(controller&&controller->reservoir()){cJSON_AddNumberToObject(j,"reservoir_reserve_ml",controller->reserve());cJSON_AddStringToObject(j,"reservoir_ref",reservoir_state.refill_id);}
   int channel=ina_channel[i];
   bool power=channel>=0&&power_fresh&&h.power[channel].has_value();
@@ -203,6 +225,7 @@ static int64_t iso(const char*s){
  auto result=mktime(&t);return t.tm_year==y-1900&&t.tm_mon==m-1&&t.tm_mday==d?result:0;
 }
 static void acknowledge_message(){
+ last_delivery_ms=esp_timer_get_time()/1000;
  if(in_flight_event){if(!durable_events->acknowledged())controller->watchdog(epoch());}
  else outbox.acknowledged();
  in_flight=-1;
@@ -210,9 +233,11 @@ static void acknowledge_message(){
 static void mqtt_event(void*,esp_event_base_t,int32_t id,void*data){
  xSemaphoreTake(mutex,portMAX_DELAY);
  auto e=static_cast<esp_mqtt_event_handle_t>(data);
- if(id==MQTT_EVENT_CONNECTED){connected=true;esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/commands").c_str(),1);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/heartbeat").c_str(),0);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/reservoir").c_str(),1);
+ if(id==MQTT_EVENT_CONNECTED){connected=true;++mqtt_connects;esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/commands").c_str(),1);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/heartbeat").c_str(),0);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/reservoir").c_str(),1);
   // Main loop opens the remote barrier only after subscription/clock/backlog checks.
- }else if(id==MQTT_EVENT_DISCONNECTED){connected=false;subscribed=false;backend_online=false;heartbeat_ms=-1;controller->connectivity(false);}
+ }else if(id==MQTT_EVENT_DISCONNECTED){connected=false;subscribed=false;backend_online=false;heartbeat_ms=-1;controller->connectivity(false);
+  // The library may drop the unconfirmed message while offline; resend it after reconnecting.
+  if(in_flight>=0)in_flight=-1;}
  else if(id==MQTT_EVENT_SUBSCRIBED){subscribed=true;}
  else if(id==MQTT_EVENT_PUBLISHED){if(in_flight==-2)early_ack=e->msg_id;else if(e->msg_id==in_flight)acknowledge_message();}
  else if(id==MQTT_EVENT_DELETED){if(in_flight==-2)early_deleted=e->msg_id;else if(e->msg_id==in_flight)in_flight=-1;}
@@ -253,9 +278,9 @@ static void mqtt_event(void*,esp_event_base_t,int32_t id,void*data){
  }
  xSemaphoreGive(mutex);
 }
-static void wifi_event(void*,esp_event_base_t base,int32_t id,void*){
+static void wifi_event(void*,esp_event_base_t base,int32_t id,void*data){
  if(base==WIFI_EVENT&&id==WIFI_EVENT_STA_START)esp_wifi_connect();
- if(base==WIFI_EVENT&&id==WIFI_EVENT_STA_DISCONNECTED)esp_wifi_connect();
+ if(base==WIFI_EVENT&&id==WIFI_EVENT_STA_DISCONNECTED){++wifi_disconnects;last_wifi_reason=static_cast<wifi_event_sta_disconnected_t*>(data)->reason;ESP_LOGW(TAG,"Wi-Fi disconnected (reason %u)",last_wifi_reason);esp_wifi_connect();}
  if(base==IP_EVENT&&id==IP_EVENT_STA_GOT_IP&&!ntp.empty())esp_netif_sntp_start();
 }
 static bool persist_event(size_t channel,const Event&e){
@@ -339,6 +364,7 @@ extern "C" void app_main(){
   ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT,ESP_EVENT_ANY_ID,wifi_event,nullptr));ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT,IP_EVENT_STA_GOT_IP,wifi_event,nullptr));
   wifi_config_t w={};strncpy(reinterpret_cast<char*>(w.sta.ssid),ssid.c_str(),sizeof(w.sta.ssid)-1);strncpy(reinterpret_cast<char*>(w.sta.password),wifi_password.c_str(),sizeof(w.sta.password)-1);w.sta.threshold.authmode=WIFI_AUTH_WPA2_PSK;
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA,&w));ESP_ERROR_CHECK(esp_wifi_start());
+  esp_wifi_set_ps(WIFI_PS_NONE); // Mains-powered bench: no modem sleep delaying MQTT keepalive/PUBACK.
  }else ESP_LOGW(TAG,"No complete TLS/Wi-Fi credentials; offline locked-off firmware");
  esp_task_wdt_add(nullptr);
  bool mqtt_started=false;
@@ -373,6 +399,17 @@ extern "C" void app_main(){
 #endif
   if(connected&&subscribed&&utc_synced.load()&&epoch()>1700000000&&outbox.size()==0&&durable_events->size()==0&&in_flight==-1&&!controller->running())controller->synchronize(epoch());
   // PUBACK only releases the delivery buffer; it never proves physical actuation.
+  {int64_t now_ms=esp_timer_get_time()/1000;
+   if(connected)mqtt_down_since_ms=now_ms;
+   if(mqtt_started&&!connected&&now_ms-mqtt_down_since_ms>wifi_kick_ms&&now_ms-last_wifi_kick_ms>wifi_kick_ms){
+    ++wifi_kicks;last_wifi_kick_ms=now_ms;ESP_LOGW(TAG,"Broker unreachable for 5 min; re-associating Wi-Fi");esp_wifi_disconnect();} // handler reconnects
+   if(in_flight>=0&&now_ms-in_flight_since_ms>in_flight_timeout_ms){++in_flight_timeouts;ESP_LOGW(TAG,"No PUBACK for message %d in %lld s; resending",in_flight,static_cast<long long>(in_flight_timeout_ms/1000));in_flight=-1;}
+   // Last resort for any stall (Wi-Fi/TLS/heap): restart only with every output off and no cycle.
+   if(mqtt&&now_ms-last_delivery_ms>delivery_watchdog_ms&&!controller->running()){ESP_LOGE(TAG,"No delivery for %lld min; restarting",static_cast<long long>(delivery_watchdog_ms/60000));pump.off_all();
+#if !CONFIG_IRRIGATION_SIMULATION
+    hardware::outputs_low();
+#endif
+    esp_restart();}}
   if(connected&&in_flight==-1){
    if(durable_events->front()){publish_topic="irrigation/v1/"+device+"/events";publish_payload=*durable_events->front();in_flight_event=true;}
    else if(outbox.front()){publish_topic=outbox.front()->topic;publish_payload=outbox.front()->payload;in_flight_event=false;}
@@ -383,7 +420,7 @@ extern "C" void app_main(){
   // Do not hold the controller mutex while acquiring the MQTT library API mutex.
   if(!publish_payload.empty()){
    int message=esp_mqtt_client_publish(mqtt,publish_topic.c_str(),publish_payload.c_str(),0,1,0);
-   xSemaphoreTake(mutex,portMAX_DELAY);in_flight=message;
+   xSemaphoreTake(mutex,portMAX_DELAY);in_flight=message<0?-1:message;in_flight_since_ms=esp_timer_get_time()/1000; // <0: not sent/outbox full, retry
    if(message>=0&&early_ack==message)acknowledge_message();else if(message>=0&&early_deleted==message)in_flight=-1;
    xSemaphoreGive(mutex);
   }

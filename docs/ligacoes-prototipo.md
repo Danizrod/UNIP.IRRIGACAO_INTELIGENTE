@@ -161,3 +161,21 @@ Painel corrigido: as etapas não são mais puladas quando a marcação demora (t
 - **Comandos de teste publicados direto no tópico (fora do despachante):** sem calibração, tratamento trocado, vencido e volume acima do limite foram todos rejeitados, com **0 eventos `started`**. Os eventos de comandos desconhecidos ficam em `rejected_messages`.
 - **Relógio:** um comando novo era recusado como "futuro" porque o relógio da placa fica ~1 s atrás do servidor. Agora o firmware aceita até 5 s de diferença (`clock_skew_s`).
 - **Falta testar com as bombas e calibrações:** ciclo completo, reset no meio da dose (desconto da dose máxima), queda de Wi-Fi durante a dose e leitura inválida durante a dose. Até lá, esses casos têm só os testes de host.
+
+### Quedas de comunicação (07–10/11/2026) e firmware `physical-telemetry-3`
+
+Fontes cruzadas: telemetria no banco, log do Mosquitto e log de energia do Windows (`Kernel-Power`).
+
+| Falha (horário local) | Notebook | Broker | Leitura |
+|---|---|---|---|
+| 07/11 02:14 → 09/11 07:33 | Desligado ou suspenso: relógio do Windows ajustado ao voltar | Sem conexões | Lado do notebook |
+| 09/11 12:46 → 19:39 | Acordado (sem evento de espera) | Placa fechou a sessão às 12:49 e não houve mais nenhuma tentativa até religar | Lado da placa/Wi-Fi |
+| 09/11 20:46 → 23:33 | Acordado | Fechou às 20:48; nenhuma tentativa até religar | Lado da placa/Wi-Fi |
+| 09/11 23:47 → 10/11 09:15 | **Entrou em espera (S0) às 23:46–23:47** e só acordou de vez às ~09:13 | 672 tentativas TLS abortadas de 03:06 a 09:15 | Notebook em espera (tampa, botão ou ação do usuário) |
+
+A configuração na tomada já é "nunca suspender" e "nunca desligar a tela"; a espera de 23:47 veio de outra ação (tampa ou botão). Corrigido no firmware `-3` (compilado; **falta gravar**, a placa estava sem USB):
+- **Trava de envio:** a placa só envia uma mensagem depois da confirmação (PUBACK) da anterior. A biblioteca MQTT descartava a mensagem sem avisar (`CONFIG_MQTT_REPORT_DELETED_MESSAGES` desligado), e o envio parava para sempre, mesmo com a conexão ativa. Agora a placa reenvia após 60 s sem confirmação ou após uma desconexão; os ids evitam duplicatas no banco. Ela também trata a fila cheia da biblioteca, e o aviso de descarte foi ligado.
+- **Wi-Fi:** economia de energia desligada (`WIFI_PS_NONE`). Com 5 min sem broker, a placa refaz a associação Wi-Fi (novo DHCP/ARP).
+- **Último recurso:** com 20 min sem nenhuma entrega e nenhum ciclo ativo, a placa reinicia com as saídas desligadas. A telemetria em RAM é perdida; os eventos ficam na NVS.
+- **Diagnóstico na telemetria:** `uptime_s`, `reset_reason`, `heap_free_b`, `heap_min_b`, `heap_largest_b`, `wifi_rssi_dbm`, `mqtt_connects`, `wifi_disconnects`, `wifi_last_reason`, `publish_timeouts`, `wifi_kicks`. A causa exata das quedas de 09/11 durante o dia segue **não confirmada**.
+

@@ -39,6 +39,18 @@ class Telemetry(BaseModel):
     reservoir_ml: float | None = Field(default=None, ge=0, le=5000)
     reservoir_reserve_ml: float | None = Field(default=None, ge=0, le=5000)
     reservoir_ref: str | None = Field(default=None, max_length=36)
+    # Link/heap diagnostics (firmware physical-telemetry-3); shared by the three units.
+    uptime_s: float | None = Field(default=None, ge=0)
+    reset_reason: int | None = Field(default=None, ge=0, le=64, strict=True)
+    heap_free_b: float | None = Field(default=None, ge=0)
+    heap_min_b: float | None = Field(default=None, ge=0)
+    heap_largest_b: float | None = Field(default=None, ge=0)
+    wifi_rssi_dbm: int | None = Field(default=None, ge=-127, le=20, strict=True)
+    mqtt_connects: int | None = Field(default=None, ge=0, strict=True)
+    wifi_disconnects: int | None = Field(default=None, ge=0, strict=True)
+    wifi_last_reason: int | None = Field(default=None, ge=0, le=255, strict=True)
+    publish_timeouts: int | None = Field(default=None, ge=0, strict=True)
+    wifi_kicks: int | None = Field(default=None, ge=0, strict=True)
 
     @model_validator(mode='after')
     def consistency(self):
