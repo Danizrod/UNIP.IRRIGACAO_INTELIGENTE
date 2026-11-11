@@ -221,5 +221,5 @@ Testes na placa (`-3`/`-4`):
 - **Pulso único de 0,5 s:** sem efeito no DHT22.
 - **Pulsos de 2 s nas três bombas em sequência:** o DHT22 falhou continuamente logo depois, e a reinicialização do GPIO18 não recuperou (`dht_resets` 4).
 - **USB:** o conversor USB-serial voltou a falhar ("dispositivo não está funcionando").
-- **Leitura:** com diodos presentes, a hipótese passa a ser a **alimentação**. O INA3221 mede ~5,1–5,3 V no barramento das bombas, valor típico do USB, o que sugere bombas alimentadas pelo 5 V da própria placa ESP32/USB. Nesse caso, a partida das bombas derruba o 5 V/3,3 V e afeta DHT22, CH9102 e ESP32. **A confirmar com o usuário.**
+- **Leitura:** com diodos presentes, a hipótese passa a ser a **alimentação**. O INA3221 mede ~5,1–5,3 V no barramento das bombas, valor típico do USB, o que sugere bombas alimentadas pelo 5 V da própria placa ESP32/USB. Nesse caso, a partida das bombas derruba o 5 V/3,3 V e afeta DHT22, CH9102 e ESP32. **Confirmado pelo usuário em 11/11:** os testes rodaram só com o USB do notebook, sem a fonte externa, que já está pronta. Repetir o teste controlado com a fonte externa antes de qualquer conclusão sobre ruído. Não usar os botões das bombas só com o USB.
 
