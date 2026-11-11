@@ -188,7 +188,8 @@ Testes na placa (`-3`/`-4`):
 
 ### Pulso manual das bombas (`physical-telemetry-4`, 11/11/2026)
 
-- **Bombas:** JT100 informadas pelo usuário (3–5 V DC, ~1,5 A máx., 1–1,5 L/min, 1 m).
+- **Bombas:** JT100 informadas pelo usuário (3–5 V DC, 1–1,5 L/min, 1 m). Corrente de trabalho de ~120–350 mA; 1,5 A é o pico de partida (anúncio, não medido).
+- **Foto de 11/11 (placa perfurada):** 3 transistores TO-126 (BD135) com resistores de base, borne de 6 vias para as bombas, LED de teste ainda preso ao borne. Os bornes CH1–CH3 do INA3221 aparecem **sem fios**, então a corrente das bombas talvez não passe pelos shunts. Pela foto, não dá para confirmar o diodo de roda-livre, o valor dos resistores, a fonte de 5 V nem o terra comum. A chave continua desligada.
 - **Caminho:** o painel envia `irrigation/v1/esp32-01/manual`, e a placa responde em `.../manual_result` com o tempo ligado e o pico de corrente e a tensão mínima nos 3 canais do INA3221 (amostragem de ~100 ms durante o pulso).
 - **Limites no firmware:** até 2 s por pulso, 10 s de descanso por saída, até 10 s ligada por saída a cada 10 min, uma saída por vez, desligamento por timer de hardware e proteção extra no laço principal.
 - **Chave:** o recurso fica **travado** até existir `pump_test=1` na partição `provision`. A chave só será gravada depois da revisão do circuito de potência; hoje a placa responde `manual_disabled_until_circuit_review` (testado).
