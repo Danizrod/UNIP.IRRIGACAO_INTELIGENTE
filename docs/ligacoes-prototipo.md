@@ -233,3 +233,10 @@ Testes na placa (`-3`/`-4`):
   - alimentar o VCC do DHT22 por um GPIO livre (GPIO23 ou GPIO19), para o firmware desligar e religar o sensor após falhas;
   - se houver componentes: 100 nF cerâmico em paralelo com cada bomba e junto ao DHT22, e pull-up externo de 10 kΩ no dado.
 
+### Parada de 10/11 23:29 a 11/11 ~15:15
+
+- **Notebook:** entrou em espera às 23:29:45 e o ESP32 perdeu a sessão às 23:29:46. Às 00:29 o notebook entrou em suspensão, e só retomou às 12:06.
+- **Docker:** depois da retomada, recriou os contêineres com o encaminhamento das portas 8090, 8000 e **8883** aceitando a conexão e fechando sem resposta. Os serviços estavam saudáveis por dentro.
+- **Efeito:** o ESP32 não conseguiu reconectar até o broker ser recriado.
+- **Ferramenta nova:** `tools/repair_ports.py` testa as portas e recria só o serviço afetado.
+- **Ação do usuário:** impedir a espera do notebook (tampa/botão de energia) durante o ensaio.
