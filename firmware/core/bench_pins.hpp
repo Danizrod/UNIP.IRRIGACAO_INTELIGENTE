@@ -18,7 +18,8 @@ constexpr std::array<int, 3> output_pins{{25, 26, 27}};
 constexpr int verified_led_output = 26; // User observed pulses; original LED connector.
 constexpr std::array<int, 3> led_tested_connector_order{{26, 25, 27}};
 // Connector order is the user's test order, not physical left-to-right order.
-// Motor polarity, INA channel -> load and T1/T2/T3 remain unverified.
+// 11/11/2026 dry pulses: output n -> INA3221 channel n; GPIO25 -> pump 3, GPIO26 -> pump 2,
+// GPIO27 -> pump 1 (user-observed labels). Pump -> pot/T1/T2/T3 still to be assigned.
 // Never infer those associations from array ordering.
 constexpr bool motor_circuit_validated = false;
 }

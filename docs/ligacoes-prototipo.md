@@ -206,4 +206,4 @@ Testes na placa (`-3`/`-4`):
 - **Pendente:** associar cada bomba ao seu vaso e tratamento (`ina1..3`).
 - **Corrente:** fica dentro da faixa de trabalho informada. A saída 1 mediu cerca de metade das outras; investigar a bomba ou o resistor de base.
 - **Tempo ligado:** o `on_ms` de 515–559 ms inclui a latência do laço; a saída é desligada pelo timer em 500 ms.
-
+- **Bomba girando em cada saída (observado pelo usuário em 11/11):** saída 1 (GPIO25, CH1) → bomba 3; saída 2 (GPIO26, CH2) → bomba 2; saída 3 (GPIO27, CH3) → bomba 1. Falta associar as bombas aos vasos e tratamentos. A corrente menor da saída 1 corresponde à bomba 3.

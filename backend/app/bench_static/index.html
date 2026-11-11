@@ -106,9 +106,9 @@ code{font-family:var(--mono);font-size:13px}
       <select id="pulseMs" style="width:auto"><option value="500">0,5 s</option><option value="1000" selected>1 s</option><option value="2000">2 s (máximo)</option></select>
     </div>
     <div class="row">
-      <button class="primary pumpBtn" data-out="1">Ligar saída 1 (GPIO25)</button>
-      <button class="primary pumpBtn" data-out="2">Ligar saída 2 (GPIO26)</button>
-      <button class="primary pumpBtn" data-out="3">Ligar saída 3 (GPIO27)</button>
+      <button class="primary pumpBtn" data-out="1">Saída 1 · bomba 3 (GPIO25)</button>
+      <button class="primary pumpBtn" data-out="2">Saída 2 · bomba 2 (GPIO26)</button>
+      <button class="primary pumpBtn" data-out="3">Saída 3 · bomba 1 (GPIO27)</button>
       <button id="pumpStop" style="border-color:var(--bad);color:var(--bad)">Parar tudo</button>
     </div>
     <div class="note">A placa desliga sozinha pelo timer: máximo de 2 s por pulso, 10 s de descanso por saída, 10 s ligada por saída a cada 10 min e uma saída por vez. Use para descobrir qual bomba cada saída aciona e o canal do INA3221 que mede a corrente. Registros em <code>data/raw/acionamentos</code>.</div>
