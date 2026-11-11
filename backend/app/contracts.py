@@ -35,6 +35,7 @@ class Telemetry(BaseModel):
     scale_span_g: float | None = Field(default=None, ge=0, le=5000)
     scale_calibration_id: str | None = Field(default=None, min_length=1, max_length=80)
     ina_channel: int | None = Field(default=None, ge=1, le=3, strict=True)
+    pump_output: int | None = Field(default=None, ge=1, le=3, strict=True)
     # Shared reservoir estimate by accounting (registered refill minus doses), not weighing.
     reservoir_ml: float | None = Field(default=None, ge=0, le=5000)
     reservoir_reserve_ml: float | None = Field(default=None, ge=0, le=5000)

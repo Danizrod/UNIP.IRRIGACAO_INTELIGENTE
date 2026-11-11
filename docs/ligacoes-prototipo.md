@@ -207,3 +207,4 @@ Testes na placa (`-3`/`-4`):
 - **Corrente:** fica dentro da faixa de trabalho informada. A saída 1 mediu cerca de metade das outras; investigar a bomba ou o resistor de base.
 - **Tempo ligado:** o `on_ms` de 515–559 ms inclui a latência do laço; a saída é desligada pelo timer em 500 ms.
 - **Bomba girando em cada saída (observado pelo usuário em 11/11):** saída 1 (GPIO25, CH1) → bomba 3; saída 2 (GPIO26, CH2) → bomba 2; saída 3 (GPIO27, CH3) → bomba 1. Falta associar as bombas aos vasos e tratamentos. A corrente menor da saída 1 corresponde à bomba 3.
+- **Vasos (usuário, 11/11):** bomba n → pot-0n (Tn). Resultado: **pot-01/T1 = saída 3 (GPIO27, CH3)**, **pot-02/T2 = saída 2 (GPIO26, CH2)**, **pot-03/T3 = saída 1 (GPIO25, CH1)**. Provisionado como `out1..3=3,2,1` e `ina1..3=3,2,1`. A telemetria passa a levar `pump_output` e a corrente/tensão do canal de cada vaso. O controle automático ainda não usa `out*` (atuação bloqueada).

@@ -133,6 +133,7 @@ static constexpr double mass_stable_span_g=5; // Provisional: ~1 g noise observe
 static ScaleCalibration scale_calibration;
 static std::array<RelativeSoilCalibration,3> soil_calibration;
 static std::array<int,3> ina_channel{{-1,-1,-1}}; // Unit -> INA3221 channel; unknown until verified.
+static std::array<int,3> unit_output{{-1,-1,-1}};  // Unit -> pump output (0..2 = GPIO25/26/27); not yet used to actuate.
 static int64_t telemetry_period_s=60;
 [[maybe_unused]] static double shared_removed_ml=0;
 static bool connected=false;
@@ -230,6 +231,7 @@ static void queue_physical_telemetry(const hardware::Snapshot& h,int64_t now){
   add_optional(j,"pump_voltage_v",power?std::optional<double>(h.power[channel]->bus_v):std::nullopt);
   add_optional(j,"pump_current_a",power?std::optional<double>(h.power[channel]->current_a):std::nullopt);
   if(channel>=0)cJSON_AddNumberToObject(j,"ina_channel",channel+1);
+  if(unit_output[i]>=0)cJSON_AddNumberToObject(j,"pump_output",unit_output[i]+1);
   char*s=cJSON_PrintUnformatted(j);if(s){enqueue({"irrigation/v1/"+device+"/telemetry",s});free(s);}cJSON_Delete(j);
  }
 #else
@@ -413,6 +415,8 @@ extern "C" void app_main(){
    soil_calibration[i]={soil_id,parse_number(get(settings,("dry"+suffix).c_str())),parse_number(get(settings,("wet"+suffix).c_str()))};
    double channel=parse_number(get(settings,("ina"+suffix).c_str()));
    if(channel==1||channel==2||channel==3)ina_channel[i]=static_cast<int>(channel)-1;
+   double output=parse_number(get(settings,("out"+suffix).c_str()));
+   if(output==1||output==2||output==3)unit_output[i]=static_cast<int>(output)-1;
   }
   manual_enabled=get(settings,"pump_test")=="1";
   double period=parse_number(get(settings,"telemetry_s"));

@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 KEYS = {'device','experiment','unit','broker','username','password','ca','ssid','wifi_password','ntp'}
 # Optional physical acquisition settings; absent => firmware publishes null, never a default.
 NUMERIC = {'scale_offset','scale_factor','dry1','wet1','dry2','wet2','dry3','wet3','telemetry_s'}
-OPTIONAL = NUMERIC | {'scale_cal','soil_cal','ina1','ina2','ina3','pump_test'}
+OPTIONAL = NUMERIC | {'scale_cal','soil_cal','ina1','ina2','ina3','out1','out2','out3','pump_test'}
 
 
 def private_path(path):
@@ -100,6 +100,10 @@ def validate(settings, mode):
     for key in ('ina1','ina2','ina3'):
         if key in settings and settings[key] not in ('1','2','3'):
             raise ValueError('Canal INA deve ser 1, 2 ou 3')
+    # Unit (pot) -> pump output 1..3 (GPIO25/26/27); all three or none, each output once.
+    outs=[settings.get(f'out{i}') for i in (1,2,3)]
+    if any(outs) and (None in outs or sorted(outs)!=['1','2','3']):
+        raise ValueError('out1..out3 devem mapear os três vasos para saídas 1, 2 e 3 distintas')
     for key in ('scale_cal','soil_cal'):
         if key in settings and not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,47}',settings[key]):
             raise ValueError('Identificação de calibração inválida')
