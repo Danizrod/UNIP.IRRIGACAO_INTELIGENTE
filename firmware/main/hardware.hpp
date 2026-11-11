@@ -15,7 +15,7 @@ struct Snapshot {
  uint32_t scale_samples=0,scale_faults=0;
  std::array<int,3> soil_raw{{-1,-1,-1}};int64_t soil_at_ms=-1; // GPIO32, 33, 34.
  bool ina_ok=false;std::array<std::optional<irrigation::PowerReading>,3> power;int64_t power_at_ms=-1;
- std::optional<irrigation::Climate> climate;int64_t climate_at_ms=-1;uint32_t climate_faults=0;
+ std::optional<irrigation::Climate> climate;int64_t climate_at_ms=-1;uint32_t climate_faults=0,climate_streak=0,climate_resets=0;
 };
 // Manual pump pulses: INA3221 sampled every ~100 ms while active; peaks/minimum since the last take.
 struct PowerPeaks {std::array<double,3> peak_current_a{{NAN,NAN,NAN}},min_bus_v{{NAN,NAN,NAN}};uint32_t samples=0;};

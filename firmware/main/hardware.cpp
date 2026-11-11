@@ -130,8 +130,13 @@ static void task(void*){
    xSemaphoreGive(lock);
    next_slow=now+(fast_power?100:1000);}
   if(now>=next_dht){auto climate=dht_read();
-   xSemaphoreTake(lock,portMAX_DELAY);if(climate){shared.climate=climate;shared.climate_at_ms=now_ms();}else ++shared.climate_faults;xSemaphoreGive(lock);
-   next_dht=now+3000;}
+   xSemaphoreTake(lock,portMAX_DELAY);if(climate){shared.climate=climate;shared.climate_at_ms=now_ms();shared.climate_streak=0;}else{++shared.climate_faults;++shared.climate_streak;}
+   uint32_t streak=shared.climate_streak;if(streak&&streak%5==0)++shared.climate_resets;xSemaphoreGive(lock);
+   next_dht=now+3000;
+   // 10/11: DHT22 stopped answering after pump pulses until the board restarted. Every 5 misses,
+   // re-initialise the line and leave it idle-high 2 s before the next start signal.
+   if(streak&&streak%5==0){ESP_LOGW(TAG,"DHT22: %u failed reads; re-initialising GPIO%d",static_cast<unsigned>(streak),bench::dht_data);
+    gpio_reset_pin(dht_pin);gpio_set_direction(dht_pin,GPIO_MODE_INPUT_OUTPUT_OD);gpio_set_pull_mode(dht_pin,GPIO_PULLUP_ONLY);gpio_set_level(dht_pin,1);next_dht=now+2000;}}
   esp_task_wdt_reset();
   vTaskDelay(pdMS_TO_TICKS(10));
  }

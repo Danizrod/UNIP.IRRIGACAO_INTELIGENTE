@@ -208,6 +208,7 @@ static void queue_physical_telemetry(const hardware::Snapshot& h,int64_t now){
   add_optional(j,"soil_index",index);cJSON_AddBoolToObject(j,"sensor_valid",index.has_value());
   add_optional(j,"temperature_c",climate_fresh?std::optional<double>(h.climate->temperature_c):std::nullopt);
   add_optional(j,"humidity_pct",climate_fresh?std::optional<double>(h.climate->humidity_pct):std::nullopt);
+  cJSON_AddNumberToObject(j,"dht_faults",h.climate_faults);cJSON_AddNumberToObject(j,"dht_streak",h.climate_streak);cJSON_AddNumberToObject(j,"dht_resets",h.climate_resets);
   // Shared platform: the same reading is repeated per unit, not three measurements.
   add_optional(j,"reservoir_mass_g",mass);
   if(h.scale_fresh)cJSON_AddNumberToObject(j,"scale_counts",h.scale_counts);else cJSON_AddNullToObject(j,"scale_counts");

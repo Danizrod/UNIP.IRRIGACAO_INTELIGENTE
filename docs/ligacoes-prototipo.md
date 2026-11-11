@@ -208,3 +208,11 @@ Testes na placa (`-3`/`-4`):
 - **Tempo ligado:** o `on_ms` de 515–559 ms inclui a latência do laço; a saída é desligada pelo timer em 500 ms.
 - **Bomba girando em cada saída (observado pelo usuário em 11/11):** saída 1 (GPIO25, CH1) → bomba 3; saída 2 (GPIO26, CH2) → bomba 2; saída 3 (GPIO27, CH3) → bomba 1. Falta associar as bombas aos vasos e tratamentos. A corrente menor da saída 1 corresponde à bomba 3.
 - **Vasos (usuário, 11/11):** bomba n → pot-0n (Tn). Resultado: **pot-01/T1 = saída 3 (GPIO27, CH3)**, **pot-02/T2 = saída 2 (GPIO26, CH2)**, **pot-03/T3 = saída 1 (GPIO25, CH1)**. Provisionado como `out1..3=3,2,1` e `ina1..3=3,2,1`. A telemetria passa a levar `pump_output` e a corrente/tensão do canal de cada vaso. O controle automático ainda não usa `out*` (atuação bloqueada).
+
+**Efeitos dos pulsos sobre o resto da placa (10/11, horário local):**
+- **DHT22:** a temperatura sumiu nas três vezes em que o usuário acionou as bombas (22:10, 22:20 e 22:26) e só voltou com reinício da placa.
+- **Reinício:** às 22:09 houve um reinício por watchdog (`reset_reason=7`) logo após pulsos.
+- **USB:** o conversor USB-serial (CH9102, COM5) passou a responder "dispositivo não está funcionando" depois de pulsos, duas vezes.
+- **Hipótese principal (não confirmada):** pico indutivo ou ruído de terra no chaveamento das bombas, por diodo de roda-livre ausente ou ineficaz ou por retorno de corrente perto do ESP32.
+- **Mitigação em software (`-4` + DHT):** a cada 5 falhas seguidas, o GPIO18 é reinicializado. `dht_faults`, `dht_streak` e `dht_resets` vão na telemetria. Isso não corrige a causa elétrica.
+

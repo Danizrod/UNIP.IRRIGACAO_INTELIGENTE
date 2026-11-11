@@ -54,6 +54,9 @@ class Telemetry(BaseModel):
     wifi_kicks: int | None = Field(default=None, ge=0, strict=True)
     outbox_dropped: float | None = Field(default=None, ge=0)
     manual_enabled: bool | None = None
+    dht_faults: int | None = Field(default=None, ge=0, strict=True)
+    dht_streak: int | None = Field(default=None, ge=0, strict=True)
+    dht_resets: int | None = Field(default=None, ge=0, strict=True)
 
     @model_validator(mode='after')
     def consistency(self):
