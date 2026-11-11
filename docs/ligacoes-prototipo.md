@@ -223,3 +223,13 @@ Testes na placa (`-3`/`-4`):
 - **USB:** o conversor USB-serial voltou a falhar ("dispositivo não está funcionando").
 - **Leitura:** com diodos presentes, a hipótese passa a ser a **alimentação**. O INA3221 mede ~5,1–5,3 V no barramento das bombas, valor típico do USB, o que sugere bombas alimentadas pelo 5 V da própria placa ESP32/USB. Nesse caso, a partida das bombas derruba o 5 V/3,3 V e afeta DHT22, CH9102 e ESP32. **Confirmado pelo usuário em 11/11:** os testes rodaram só com o USB do notebook, sem a fonte externa, que já está pronta. Repetir o teste controlado com a fonte externa antes de qualquer conclusão sobre ruído. Não usar os botões das bombas só com o USB.
 
+**Mesmo teste só com a fonte externa (11/11):**
+- **Bombas:** correntes de 0,38–0,41 A. Barramento mínimo de 5,16 V, então não houve queda relevante de tensão.
+- **ESP32:** não reiniciou.
+- **DHT22:** **falhou de novo** logo após os pulsos e não voltou com a reinicialização do GPIO18.
+- **INA3221:** em uma amostra, leu 0 V de barramento em CH2/CH3 durante o pulso, sinal de ruído no I2C/terra.
+- **Conclusão revista:** não é falta de tensão. É **ruído do motor** (escovas e chaveamento) chegando ao DHT22, que trava e só volta quando perde a energia. Todas as recuperações observadas coincidiram com o religamento da placa.
+- **Propostas:**
+  - alimentar o VCC do DHT22 por um GPIO livre (GPIO23 ou GPIO19), para o firmware desligar e religar o sensor após falhas;
+  - se houver componentes: 100 nF cerâmico em paralelo com cada bomba e junto ao DHT22, e pull-up externo de 10 kΩ no dado.
+
