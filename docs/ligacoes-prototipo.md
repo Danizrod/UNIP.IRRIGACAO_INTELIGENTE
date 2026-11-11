@@ -216,3 +216,10 @@ Testes na placa (`-3`/`-4`):
 - **Hipótese principal (não confirmada):** pico indutivo ou ruído de terra no chaveamento das bombas, por diodo de roda-livre ausente ou ineficaz ou por retorno de corrente perto do ESP32.
 - **Mitigação em software (`-4` + DHT):** a cada 5 falhas seguidas, o GPIO18 é reinicializado. `dht_faults`, `dht_streak` e `dht_resets` vão na telemetria. Isso não corrige a causa elétrica.
 
+**Teste controlado (11/11):**
+- **Foto:** confirma um diodo axial atrás de cada par de bornes. Os resistores de base parecem ser de 1 kΩ (marrom-preto-vermelho, lido na foto). Com isso, a corrente de base fica em ~2,6 mA, e o BD135 provavelmente não satura (corrente da bomba limitada a ~0,1–0,4 A).
+- **Pulso único de 0,5 s:** sem efeito no DHT22.
+- **Pulsos de 2 s nas três bombas em sequência:** o DHT22 falhou continuamente logo depois, e a reinicialização do GPIO18 não recuperou (`dht_resets` 4).
+- **USB:** o conversor USB-serial voltou a falhar ("dispositivo não está funcionando").
+- **Leitura:** com diodos presentes, a hipótese passa a ser a **alimentação**. O INA3221 mede ~5,1–5,3 V no barramento das bombas, valor típico do USB, o que sugere bombas alimentadas pelo 5 V da própria placa ESP32/USB. Nesse caso, a partida das bombas derruba o 5 V/3,3 V e afeta DHT22, CH9102 e ESP32. **A confirmar com o usuário.**
+
