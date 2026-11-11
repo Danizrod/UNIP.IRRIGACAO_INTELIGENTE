@@ -4,6 +4,8 @@
 #include "shared_rig.hpp"
 #include "measurements.hpp"
 #include "hardware.hpp"
+#include "bench_pins.hpp"
+#include "driver/gpio.h"
 #include "cJSON.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -91,6 +93,19 @@ static bool save_reservoir(std::optional<double> ml,double reserve_ml){
  reservoir_state.known=ml.has_value();reservoir_state.ml=ml.value_or(0);reservoir_state.reserve_ml=reserve_ml;
  return journal_handle&&nvs_set_blob(journal_handle,"reservoir",&reservoir_state,sizeof(reservoir_state))==ESP_OK&&nvs_commit(journal_handle)==ESP_OK;
 }
+// Manual dry pulses for bench checks (pump direction, wiring, INA channel). Off unless the provisioned
+// key pump_test=1 is present (set only after the power circuit is reviewed). Hard limits for running
+// out of water: <=2 s per pulse, 10 s rest per output, <=10 s on-time per output per 10 min, one at a time.
+static constexpr int64_t manual_max_ms=2000,manual_rest_ms=10000,manual_budget_ms=10000,manual_window_ms=600000;
+static bool manual_enabled=false;
+static std::atomic<int> manual_output{-1};
+static std::atomic<bool> manual_timer_fired{false};
+static int64_t manual_started_ms=0,manual_requested_ms=0;
+static std::string manual_id;
+static std::array<int64_t,3> manual_last_end_ms{},manual_window_start_ms{},manual_used_ms{};
+static esp_timer_handle_t manual_timer=nullptr;
+static void all_outputs_low(){for(int pin:bench::output_pins)gpio_set_level(static_cast<gpio_num_t>(pin),0);}
+static void manual_timeout(void*){all_outputs_low();manual_timer_fired=true;} // esp_timer task: GPIO only
 static SharedRig* controller=nullptr;
 static esp_mqtt_client_handle_t mqtt=nullptr;
 static std::string device,broker,username,password,ca,ssid,wifi_password,ntp,experiment;
@@ -98,10 +113,22 @@ static std::array<UnitIdentity,3> units={UnitIdentity{"","T1"},UnitIdentity{"","
 struct Message {std::string topic,payload;};
 // ~40 min of physical telemetry (3 units/min) survives a broker/Wi-Fi outage in RAM.
 static Buffer<Message> outbox(120);
+// 10/11: 120 telemetry messages (~1 KB each) exhausted the heap during a 6 min broker outage; Wi-Fi
+// (WPA handshake) and TLS then failed until power-cycled. Bound the RAM buffer by bytes and keep a
+// heap reserve for reconnection; beyond that, new telemetry is dropped and counted.
+static constexpr size_t outbox_budget_b=24*1024,heap_reserve_b=48*1024;
+static size_t outbox_bytes=0;
+static size_t message_bytes(const Message&m){return m.topic.size()+m.payload.size()+64;}
+static void enqueue(Message m){
+ size_t n=message_bytes(m);
+ if(outbox_bytes+n>outbox_budget_b||esp_get_free_heap_size()<heap_reserve_b+n){++outbox.dropped;return;}
+ outbox.push(std::move(m));outbox_bytes+=n;
+}
+static void dequeue(){if(auto f=outbox.front()){outbox_bytes-=std::min(outbox_bytes,message_bytes(*f));outbox.acknowledged();}}
 static DurableBuffer* durable_events=nullptr;
 static std::array<Sensors,3> sensors; // Invalid by default; no fabricated physical measurements.
 // Physical acquisition settings from `provision`; absent calibration => null values, never defaults.
-static constexpr const char* firmware_version="physical-telemetry-3";
+static constexpr const char* firmware_version="physical-telemetry-4";
 static constexpr double mass_stable_span_g=5; // Provisional: ~1 g noise observed on 04/11.
 static ScaleCalibration scale_calibration;
 static std::array<RelativeSoilCalibration,3> soil_calibration;
@@ -196,14 +223,14 @@ static void queue_physical_telemetry(const hardware::Snapshot& h,int64_t now){
   cJSON_AddNumberToObject(j,"heap_largest_b",static_cast<double>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
   {wifi_ap_record_t ap;if(esp_wifi_sta_get_ap_info(&ap)==ESP_OK)cJSON_AddNumberToObject(j,"wifi_rssi_dbm",ap.rssi);else cJSON_AddNullToObject(j,"wifi_rssi_dbm");}
   cJSON_AddNumberToObject(j,"mqtt_connects",mqtt_connects);cJSON_AddNumberToObject(j,"wifi_disconnects",wifi_disconnects);
-  cJSON_AddNumberToObject(j,"wifi_last_reason",last_wifi_reason);cJSON_AddNumberToObject(j,"publish_timeouts",in_flight_timeouts);cJSON_AddNumberToObject(j,"wifi_kicks",wifi_kicks);
+  cJSON_AddNumberToObject(j,"wifi_last_reason",last_wifi_reason);cJSON_AddNumberToObject(j,"publish_timeouts",in_flight_timeouts);cJSON_AddNumberToObject(j,"wifi_kicks",wifi_kicks);cJSON_AddNumberToObject(j,"outbox_dropped",static_cast<double>(outbox.dropped));cJSON_AddBoolToObject(j,"manual_enabled",manual_enabled);
   if(controller&&controller->reservoir()){cJSON_AddNumberToObject(j,"reservoir_reserve_ml",controller->reserve());cJSON_AddStringToObject(j,"reservoir_ref",reservoir_state.refill_id);}
   int channel=ina_channel[i];
   bool power=channel>=0&&power_fresh&&h.power[channel].has_value();
   add_optional(j,"pump_voltage_v",power?std::optional<double>(h.power[channel]->bus_v):std::nullopt);
   add_optional(j,"pump_current_a",power?std::optional<double>(h.power[channel]->current_a):std::nullopt);
   if(channel>=0)cJSON_AddNumberToObject(j,"ina_channel",channel+1);
-  char*s=cJSON_PrintUnformatted(j);if(s){outbox.push({"irrigation/v1/"+device+"/telemetry",s});free(s);}cJSON_Delete(j);
+  char*s=cJSON_PrintUnformatted(j);if(s){enqueue({"irrigation/v1/"+device+"/telemetry",s});free(s);}cJSON_Delete(j);
  }
 #else
  (void)h;(void)now;
@@ -227,13 +254,59 @@ static int64_t iso(const char*s){
 static void acknowledge_message(){
  last_delivery_ms=esp_timer_get_time()/1000;
  if(in_flight_event){if(!durable_events->acknowledged())controller->watchdog(epoch());}
- else outbox.acknowledged();
+ else dequeue();
  in_flight=-1;
+}
+static void manual_result(const std::string& id,int output,const char* status,const char* reason,int64_t on_ms,const hardware::PowerPeaks* peaks){
+ auto j=cJSON_CreateObject();cJSON_AddNumberToObject(j,"schema_version",1);cJSON_AddStringToObject(j,"test_id",id.c_str());
+ cJSON_AddStringToObject(j,"device_id",device.c_str());cJSON_AddNumberToObject(j,"output",output);
+ cJSON_AddStringToObject(j,"status",status);cJSON_AddStringToObject(j,"reason",reason);
+ cJSON_AddNumberToObject(j,"requested_ms",static_cast<double>(manual_requested_ms));cJSON_AddNumberToObject(j,"on_ms",static_cast<double>(on_ms));
+ cJSON_AddStringToObject(j,"at",event_stamp().c_str());
+ if(output>=1&&output<=3){int64_t now=esp_timer_get_time()/1000;size_t i=output-1;
+  int64_t used=now-manual_window_start_ms[i]>manual_window_ms?0:manual_used_ms[i];cJSON_AddNumberToObject(j,"budget_left_ms",static_cast<double>(std::max<int64_t>(0,manual_budget_ms-used)));}
+ if(peaks){auto a=cJSON_AddArrayToObject(j,"ina");cJSON_AddNumberToObject(j,"ina_samples",peaks->samples);
+  for(size_t ch=0;ch<3;++ch){auto c=cJSON_CreateObject();cJSON_AddNumberToObject(c,"channel",ch+1);
+   add_optional(c,"peak_current_a",std::isfinite(peaks->peak_current_a[ch])?std::optional<double>(peaks->peak_current_a[ch]):std::nullopt);
+   add_optional(c,"min_bus_v",std::isfinite(peaks->min_bus_v[ch])?std::optional<double>(peaks->min_bus_v[ch]):std::nullopt);cJSON_AddItemToArray(a,c);}}
+ char*s=cJSON_PrintUnformatted(j);if(s){enqueue({"irrigation/v1/"+device+"/manual_result",s});free(s);}cJSON_Delete(j);
+}
+static void manual_finish(const char* status,const char* reason){
+ all_outputs_low();if(manual_timer)esp_timer_stop(manual_timer);hardware::power_fast(false);
+ int output=manual_output.exchange(-1);if(output<0)return;
+ int64_t now=esp_timer_get_time()/1000,on=now-manual_started_ms;size_t i=output;
+ manual_last_end_ms[i]=now;manual_used_ms[i]+=std::min(on,manual_max_ms+500);
+ auto peaks=hardware::take_peaks();manual_result(manual_id,output+1,status,reason,on,&peaks);
+ ESP_LOGI(TAG,"Manual pulse output %d ended after %lld ms (%s)",output+1,static_cast<long long>(on),reason);
+}
+static void manual_request(cJSON* j){
+ auto id=str(j,"test_id"),dev=str(j,"device_id");double output_n=num(j,"output"),duration=num(j,"duration_ms");
+ int64_t issued=iso(str(j,"issued_at")),expires=iso(str(j,"expires_at")),now_s=epoch();
+ if(num(j,"schema_version")!=1||!valid_uuid(id)||!dev||device!=dev)return;
+ std::string test=id;int output=std::isfinite(output_n)?static_cast<int>(output_n):-1;
+ manual_requested_ms=std::isfinite(duration)?static_cast<int64_t>(duration):0;
+ if(output==0){manual_finish("stopped","stop_requested");manual_result(test,0,"stopped","all_outputs_low",0,nullptr);return;}
+ const char* reason=nullptr;int64_t now=esp_timer_get_time()/1000;size_t i=output>=1&&output<=3?output-1:0;
+ if(output<1||output>3)reason="invalid_output";
+ else if(!issued||expires<=issued||expires-issued>60||now_s<issued-5||now_s>=expires)reason="expired_or_future";
+ else if(!manual_enabled)reason="manual_disabled_until_circuit_review";
+ else if(!std::isfinite(duration)||duration<100||duration>manual_max_ms)reason="duration_out_of_limits";
+ else if(controller->running())reason="irrigation_cycle_running";
+ else if(manual_output.load()>=0)reason="another_output_running";
+ else if(manual_last_end_ms[i]&&now-manual_last_end_ms[i]<manual_rest_ms)reason="rest_between_pulses";
+ else{if(now-manual_window_start_ms[i]>manual_window_ms){manual_window_start_ms[i]=now;manual_used_ms[i]=0;}
+  if(manual_used_ms[i]+static_cast<int64_t>(duration)>manual_budget_ms)reason="dry_run_budget_10s_per_10min";}
+ if(reason){manual_result(test,output,"rejected",reason,0,nullptr);ESP_LOGW(TAG,"Manual pulse rejected: %s",reason);return;}
+ hardware::take_peaks();hardware::power_fast(true);
+ manual_id=test;manual_started_ms=now;manual_timer_fired=false;manual_output=output-1;
+ if(!manual_timer||esp_timer_start_once(manual_timer,static_cast<uint64_t>(duration)*1000)!=ESP_OK){manual_finish("failed","timer_unavailable");return;}
+ gpio_set_level(static_cast<gpio_num_t>(bench::output_pins[i]),1);
+ ESP_LOGW(TAG,"Manual pulse: output %d (GPIO%d) for %d ms",output,bench::output_pins[i],static_cast<int>(duration));
 }
 static void mqtt_event(void*,esp_event_base_t,int32_t id,void*data){
  xSemaphoreTake(mutex,portMAX_DELAY);
  auto e=static_cast<esp_mqtt_event_handle_t>(data);
- if(id==MQTT_EVENT_CONNECTED){connected=true;++mqtt_connects;esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/commands").c_str(),1);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/heartbeat").c_str(),0);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/reservoir").c_str(),1);
+ if(id==MQTT_EVENT_CONNECTED){connected=true;++mqtt_connects;esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/commands").c_str(),1);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/heartbeat").c_str(),0);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/reservoir").c_str(),1);esp_mqtt_client_subscribe(mqtt,("irrigation/v1/"+device+"/manual").c_str(),1);
   // Main loop opens the remote barrier only after subscription/clock/backlog checks.
  }else if(id==MQTT_EVENT_DISCONNECTED){connected=false;subscribed=false;backend_online=false;heartbeat_ms=-1;controller->connectivity(false);
   // The library may drop the unconfirmed message while offline; resend it after reconnecting.
@@ -246,6 +319,12 @@ static void mqtt_event(void*,esp_event_base_t,int32_t id,void*data){
   std::string topic(e->topic,e->topic_len);
   // Arrival time only (monotonic clock); payload content is not trusted for liveness.
   if(topic=="irrigation/v1/"+device+"/heartbeat"){heartbeat_ms=esp_timer_get_time()/1000;xSemaphoreGive(mutex);return;}
+  if(topic=="irrigation/v1/"+device+"/manual"){
+#if !CONFIG_IRRIGATION_SIMULATION
+   auto j=cJSON_ParseWithLength(e->data,e->data_len);if(j){manual_request(j);cJSON_Delete(j);}
+#endif
+   xSemaphoreGive(mutex);return;
+  }
   if(topic=="irrigation/v1/"+device+"/reservoir"){
    // Refill registration: fresh (<=5 min), for this device/experiment, once per refill_id, pumps off.
    auto j=cJSON_ParseWithLength(e->data,e->data_len);
@@ -309,7 +388,7 @@ static bool persist_event(size_t channel,const Event&e){
  char stamp[32];time_t now=time(nullptr);tm utc;gmtime_r(&now,&utc);strftime(stamp,sizeof(stamp),"%Y-%m-%dT%H:%M:%SZ",&utc);cJSON_AddStringToObject(j,"collected_at",stamp);
  auto calibration="sim-fixture-"+identity.unit_id;cJSON_AddStringToObject(j,"calibration_id",calibration.c_str());cJSON_AddNumberToObject(j,"soil_raw",2000);cJSON_AddNumberToObject(j,"soil_index",sensor.soil);cJSON_AddBoolToObject(j,"sensor_valid",sensor.valid);
  cJSON_AddNumberToObject(j,"temperature_c",23);cJSON_AddNumberToObject(j,"humidity_pct",50);cJSON_AddNumberToObject(j,"reservoir_mass_g",sensor.available_ml);
- char*s=cJSON_PrintUnformatted(j);if(s){outbox.push({"irrigation/v1/"+device+"/telemetry",s});free(s);}cJSON_Delete(j);
+ char*s=cJSON_PrintUnformatted(j);if(s){enqueue({"irrigation/v1/"+device+"/telemetry",s});free(s);}cJSON_Delete(j);
 #endif
  (void)channel;
 }
@@ -335,6 +414,7 @@ extern "C" void app_main(){
    double channel=parse_number(get(settings,("ina"+suffix).c_str()));
    if(channel==1||channel==2||channel==3)ina_channel[i]=static_cast<int>(channel)-1;
   }
+  manual_enabled=get(settings,"pump_test")=="1";
   double period=parse_number(get(settings,"telemetry_s"));
   if(period>=10&&period<=900)telemetry_period_s=static_cast<int64_t>(period);
   nvs_close(settings);
@@ -355,6 +435,7 @@ extern "C" void app_main(){
 #endif
 #if !CONFIG_IRRIGATION_SIMULATION
  hardware::start(); // Sensors only; `limits` stays uncalibrated so no command can actuate.
+ {esp_timer_create_args_t args={};args.callback=manual_timeout;args.name="manual_off";if(esp_timer_create(&args,&manual_timer)!=ESP_OK)manual_timer=nullptr;}
 #endif
  if(!device.empty()&&broker.rfind("mqtts://",0)==0&&!username.empty()&&!password.empty()&&!ca.empty()&&!ssid.empty()&&!ntp.empty()){
   ESP_ERROR_CHECK(esp_netif_init());ESP_ERROR_CHECK(esp_event_loop_create_default());esp_netif_create_default_wifi_sta();wifi_init_config_t init=WIFI_INIT_CONFIG_DEFAULT();ESP_ERROR_CHECK(esp_wifi_init(&init));
@@ -399,6 +480,11 @@ extern "C" void app_main(){
 #endif
   if(connected&&subscribed&&utc_synced.load()&&epoch()>1700000000&&outbox.size()==0&&durable_events->size()==0&&in_flight==-1&&!controller->running())controller->synchronize(epoch());
   // PUBACK only releases the delivery buffer; it never proves physical actuation.
+#if !CONFIG_IRRIGATION_SIMULATION
+  if(manual_output.load()>=0){int64_t now_ms=esp_timer_get_time()/1000;
+   if(manual_timer_fired.load())manual_finish("done","duration_elapsed");
+   else if(now_ms-manual_started_ms>manual_max_ms+300)manual_finish("failed","timer_overrun_forced_off");}
+#endif
   {int64_t now_ms=esp_timer_get_time()/1000;
    if(connected)mqtt_down_since_ms=now_ms;
    if(mqtt_started&&!connected&&now_ms-mqtt_down_since_ms>wifi_kick_ms&&now_ms-last_wifi_kick_ms>wifi_kick_ms){

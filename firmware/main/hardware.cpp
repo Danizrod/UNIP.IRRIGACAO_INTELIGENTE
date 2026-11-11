@@ -24,6 +24,8 @@ static ScaleWindow<10> window; // ~1 s at the HX711 10 SPS rate.
 static adc_oneshot_unit_handle_t adc=nullptr;
 static std::array<adc_channel_t,3> soil_channels{};
 static i2c_master_dev_handle_t ina=nullptr;
+static volatile bool fast_power=false,kick_power=false;
+static PowerPeaks peaks;
 
 static int64_t now_ms(){return esp_timer_get_time()/1000;}
 
@@ -119,9 +121,14 @@ static void task(void*){
    // No conversion for 500 ms: discard the window so stale counts are never reported.
    xSemaphoreTake(lock,portMAX_DELAY);window.reset();++shared.scale_faults;xSemaphoreGive(lock);last_ready=now;
   }
-  if(now>=next_slow){Snapshot partial;ina_sample(partial);soil_sample(partial);
-   xSemaphoreTake(lock,portMAX_DELAY);shared.ina_ok=partial.ina_ok;shared.power=partial.power;shared.power_at_ms=partial.power_at_ms;shared.soil_raw=partial.soil_raw;shared.soil_at_ms=partial.soil_at_ms;xSemaphoreGive(lock);
-   next_slow=now+1000;}
+  if(now>=next_slow||kick_power){kick_power=false;Snapshot partial;ina_sample(partial);soil_sample(partial);
+   xSemaphoreTake(lock,portMAX_DELAY);shared.ina_ok=partial.ina_ok;shared.power=partial.power;shared.power_at_ms=partial.power_at_ms;shared.soil_raw=partial.soil_raw;shared.soil_at_ms=partial.soil_at_ms;
+   for(size_t ch=0;ch<3;++ch)if(partial.power[ch]){auto&p=*partial.power[ch];
+    if(!(p.current_a<=peaks.peak_current_a[ch]))peaks.peak_current_a[ch]=p.current_a;
+    if(!(p.bus_v>=peaks.min_bus_v[ch]))peaks.min_bus_v[ch]=p.bus_v;}
+   if(partial.ina_ok)++peaks.samples;
+   xSemaphoreGive(lock);
+   next_slow=now+(fast_power?100:1000);}
   if(now>=next_dht){auto climate=dht_read();
    xSemaphoreTake(lock,portMAX_DELAY);if(climate){shared.climate=climate;shared.climate_at_ms=now_ms();}else ++shared.climate_faults;xSemaphoreGive(lock);
    next_dht=now+3000;}
@@ -138,6 +145,9 @@ void start(){
  ina_init();soil_init();
  xTaskCreatePinnedToCore(task,"sensors",4096,nullptr,5,nullptr,1);
 }
+
+void power_fast(bool on){fast_power=on;kick_power=on;}
+PowerPeaks take_peaks(){xSemaphoreTake(lock,portMAX_DELAY);PowerPeaks out=peaks;peaks=PowerPeaks{};xSemaphoreGive(lock);return out;}
 
 Snapshot snapshot(){
  xSemaphoreTake(lock,portMAX_DELAY);

@@ -173,9 +173,22 @@ Fontes cruzadas: telemetria no banco, log do Mosquitto e log de energia do Windo
 | 09/11 20:46 → 23:33 | Acordado | Fechou às 20:48; nenhuma tentativa até religar | Lado da placa/Wi-Fi |
 | 09/11 23:47 → 10/11 09:15 | **Entrou em espera (S0) às 23:46–23:47** e só acordou de vez às ~09:13 | 672 tentativas TLS abortadas de 03:06 a 09:15 | Notebook em espera (tampa, botão ou ação do usuário) |
 
-A configuração na tomada já é "nunca suspender" e "nunca desligar a tela"; a espera de 23:47 veio de outra ação (tampa ou botão). Corrigido no firmware `-3` (compilado; **falta gravar**, a placa estava sem USB):
+A configuração na tomada já é "nunca suspender" e "nunca desligar a tela"; a espera de 23:47 veio de outra ação (tampa ou botão). Corrigido nos firmwares `-3` e `-4` (gravados em 10–11/11):
 - **Trava de envio:** a placa só envia uma mensagem depois da confirmação (PUBACK) da anterior. A biblioteca MQTT descartava a mensagem sem avisar (`CONFIG_MQTT_REPORT_DELETED_MESSAGES` desligado), e o envio parava para sempre, mesmo com a conexão ativa. Agora a placa reenvia após 60 s sem confirmação ou após uma desconexão; os ids evitam duplicatas no banco. Ela também trata a fila cheia da biblioteca, e o aviso de descarte foi ligado.
 - **Wi-Fi:** economia de energia desligada (`WIFI_PS_NONE`). Com 5 min sem broker, a placa refaz a associação Wi-Fi (novo DHCP/ARP).
 - **Último recurso:** com 20 min sem nenhuma entrega e nenhum ciclo ativo, a placa reinicia com as saídas desligadas. A telemetria em RAM é perdida; os eventos ficam na NVS.
 - **Diagnóstico na telemetria:** `uptime_s`, `reset_reason`, `heap_free_b`, `heap_min_b`, `heap_largest_b`, `wifi_rssi_dbm`, `mqtt_connects`, `wifi_disconnects`, `wifi_last_reason`, `publish_timeouts`, `wifi_kicks`. A causa exata das quedas de 09/11 durante o dia segue **não confirmada**.
 
+**Causa confirmada em 10/11, na placa:** a fila de envio em RAM tinha 120 mensagens de ~1 KB. Com telemetria a cada 10 s, uma queda de ~6 min no broker **esgotava a memória**. A placa ficava presa: Wi-Fi com "4-way handshake timeout" (motivo 15) e TLS com "Failed to initialize new connection object". Só religar recuperava. É coerente com as quedas de 09/11 durante o dia e com as 672 tentativas TLS abortadas. No `-4`, a fila é limitada a 24 KB e sempre sobram 48 KB livres. O que passa disso é descartado e contado em `outbox_dropped`, que cobre ~80 s com envio a cada 10 s e ~8 min a cada 60 s.
+
+Testes na placa (`-3`/`-4`):
+- **Broker parado por 90 s:** 27 leituras sem lacuna.
+- **Broker parado por 5,5 min (`-3`):** a placa travou como descrito acima, e foi isso que confirmou a causa.
+- **Broker parado por 5,5 min (`-4`):** recuperou sozinha com 1 reassociação Wi-Fi. A memória mínima foi de 56 KB e 81 mensagens foram descartadas (contadas).
+
+### Pulso manual das bombas (`physical-telemetry-4`, 11/11/2026)
+
+- **Bombas:** JT100 informadas pelo usuário (3–5 V DC, ~1,5 A máx., 1–1,5 L/min, 1 m).
+- **Caminho:** o painel envia `irrigation/v1/esp32-01/manual`, e a placa responde em `.../manual_result` com o tempo ligado e o pico de corrente e a tensão mínima nos 3 canais do INA3221 (amostragem de ~100 ms durante o pulso).
+- **Limites no firmware:** até 2 s por pulso, 10 s de descanso por saída, até 10 s ligada por saída a cada 10 min, uma saída por vez, desligamento por timer de hardware e proteção extra no laço principal.
+- **Chave:** o recurso fica **travado** até existir `pump_test=1` na partição `provision`. A chave só será gravada depois da revisão do circuito de potência; hoje a placa responde `manual_disabled_until_circuit_review` (testado).

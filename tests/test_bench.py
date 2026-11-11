@@ -116,5 +116,17 @@ class ReservoirTests(unittest.TestCase):
         self.assertTrue(msg['issued_at'].endswith('+00:00'))
 
 
+class PulseTests(unittest.TestCase):
+    def test_pulse_limits_match_firmware(self):
+        from pydantic import ValidationError
+        with self.assertRaises(ValidationError):
+            bench.Pulse(output=1, duration_ms=2001)
+        with self.assertRaises(ValidationError):
+            bench.Pulse(output=4, duration_ms=500)
+        msg = bench.pulse_message(bench.Pulse(output=2, duration_ms=1000), '00000000-0000-4000-8000-000000000000', T0)
+        self.assertEqual((msg['output'], msg['duration_ms']), (2, 1000))
+        self.assertEqual(datetime.fromisoformat(msg['expires_at']) - datetime.fromisoformat(msg['issued_at']), timedelta(seconds=30))
+
+
 if __name__ == '__main__':
     unittest.main()

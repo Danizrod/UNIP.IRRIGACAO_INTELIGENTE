@@ -120,7 +120,7 @@ services:
       MQTT_BACKEND_PASSWORD: ${MQTT_BACKEND_PASSWORD}
       MQTT_HOST: mosquitto
     ports: ['127.0.0.1:8090:8090']
-    volumes: ['./data/raw/sessoes-balanca:/sessions', './data/raw/reposicoes:/refills', './.local/certs/ca.crt:/certs/ca.crt:ro']
+    volumes: ['./data/raw/sessoes-balanca:/sessions', './data/raw/reposicoes:/refills', './data/raw/acionamentos:/pump-tests', './.local/certs/ca.crt:/certs/ca.crt:ro']
     depends_on:
       postgres:
         condition: service_healthy

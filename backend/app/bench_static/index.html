@@ -99,6 +99,23 @@ code{font-family:var(--mono);font-size:13px}
   </section>
 
   <section class="card">
+    <h2>Bombas — acionamento manual (teste a seco)</h2>
+    <div class="alert unknown" id="pumpGate">Aguardando a placa…</div>
+    <div class="row">
+      <label for="pulseMs" style="margin:0">Duração do pulso</label>
+      <select id="pulseMs" style="width:auto"><option value="500">0,5 s</option><option value="1000" selected>1 s</option><option value="2000">2 s (máximo)</option></select>
+    </div>
+    <div class="row">
+      <button class="primary pumpBtn" data-out="1">Ligar saída 1 (GPIO25)</button>
+      <button class="primary pumpBtn" data-out="2">Ligar saída 2 (GPIO26)</button>
+      <button class="primary pumpBtn" data-out="3">Ligar saída 3 (GPIO27)</button>
+      <button id="pumpStop" style="border-color:var(--bad);color:var(--bad)">Parar tudo</button>
+    </div>
+    <div class="note">A placa desliga sozinha pelo timer: máximo de 2 s por pulso, 10 s de descanso por saída, 10 s ligada por saída a cada 10 min e uma saída por vez. Use para descobrir qual bomba cada saída aciona e o canal do INA3221 que mede a corrente. Registros em <code>data/raw/acionamentos</code>.</div>
+    <div id="pumpResult" class="small" style="margin-top:10px"></div>
+  </section>
+
+  <section class="card">
     <h2>Balança — últimos 15 minutos</h2>
     <svg id="chart" viewBox="0 0 1000 220" preserveAspectRatio="none" role="img" aria-label="Massa da balança nos últimos 15 minutos"></svg>
     <div class="small" id="chartInfo">—</div>
@@ -171,6 +188,31 @@ $('refBtn').addEventListener('click',async()=>{
   finally{$('refBtn').disabled=false;}
 });
 
+// ---------- bombas (manual) ----------
+function renderPumpGate(p){
+  const on=p&&p.manual_enabled===true;
+  $('pumpGate').className='alert '+(on?'low':'unknown');
+  $('pumpGate').textContent=on?'Acionamento manual LIBERADO na placa. Bomba fora da água: use pulsos curtos.':'Acionamento travado na placa até a revisão do circuito de potência (chave pump_test). Os botões só recebem a recusa da placa.';
+}
+async function pulse(output){
+  const ms=Number($('pulseMs').value);
+  document.querySelectorAll('.pumpBtn').forEach(b=>b.disabled=true);
+  $('pumpResult').textContent=output?`Enviando pulso de ${ms} ms para a saída ${output}…`:'Desligando todas as saídas…';
+  try{
+    const d=await api('/api/pump',{output,duration_ms:output?ms:0});
+    const ina=(d.ina||[]).map(c=>`<tr><td>Canal ${c.channel}</td><td>${fmt(c.peak_current_a,3)} A</td><td>${fmt(c.min_bus_v,2)} V</td></tr>`).join('');
+    const reasons={manual_disabled_until_circuit_review:'travado até a revisão do circuito',rest_between_pulses:'aguarde 10 s entre pulsos da mesma saída',dry_run_budget_10s_per_10min:'limite de 10 s ligada a cada 10 min atingido',another_output_running:'outra saída está ligada',duration_out_of_limits:'duração fora do limite',expired_or_future:'pedido vencido (relógio)',irrigation_cycle_running:'há um ciclo de irrigação em andamento',duration_elapsed:'concluído pelo timer',stop_requested:'parado',all_outputs_low:'todas as saídas desligadas',timer_overrun_forced_off:'desligado pela proteção de tempo'};
+    const cls=d.status==='done'||d.status==='stopped'?'good':'bad';
+    $('pumpResult').innerHTML=`<div class="verdict ${cls}">Saída ${d.output}: ${d.status} — ${reasons[d.reason]||d.reason}</div>`+
+      (d.status==='done'?`<p>Ligada por ${fmt(d.on_ms,0)} ms (pedido ${fmt(d.requested_ms,0)} ms) · tempo restante no limite a seco: ${fmt((d.budget_left_ms||0)/1000,1)} s · ${d.ina_samples} leituras do INA3221.</p>
+      <table><tr><th>INA3221</th><th>Corrente de pico</th><th>Tensão mínima</th></tr>${ina}</table>`:'');
+    if(d.status==='done')beep(880,120);
+  }catch(e){$('pumpResult').textContent='Falhou: '+e.message;}
+  finally{setTimeout(()=>document.querySelectorAll('.pumpBtn').forEach(b=>b.disabled=false),1000);}
+}
+document.querySelectorAll('.pumpBtn').forEach(b=>b.addEventListener('click',()=>pulse(Number(b.dataset.out))));
+$('pumpStop').addEventListener('click',()=>pulse(0));
+
 // ---------- leituras ao vivo ----------
 async function poll(){
   try{
@@ -186,7 +228,7 @@ function render(){
   const age=Math.min(...units.map(u=>u.age_s));
   setConn(age<=30?'ok':age<=120?'late':'off',age<=30?`ao vivo · última leitura há ${Math.round(age)} s`:`sem dados há ${Math.round(age)} s`);
   const p=units[0].payload;
-  renderReservoir();
+  renderReservoir();renderPumpGate(p);
   $('mass').textContent=p.reservoir_mass_g==null?'—':fmt(p.reservoir_mass_g)+' g';
   $('massInfo').textContent=`oscilação em 1 s: ${fmt(p.scale_span_g)} g · ${p.mass_stable?'estável':'instável'} · contagens ${p.scale_counts??'—'}`;
   $('temp').textContent=p.temperature_c==null?'—':fmt(p.temperature_c)+' °C';

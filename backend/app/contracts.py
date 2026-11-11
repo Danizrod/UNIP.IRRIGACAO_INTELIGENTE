@@ -51,6 +51,8 @@ class Telemetry(BaseModel):
     wifi_last_reason: int | None = Field(default=None, ge=0, le=255, strict=True)
     publish_timeouts: int | None = Field(default=None, ge=0, strict=True)
     wifi_kicks: int | None = Field(default=None, ge=0, strict=True)
+    outbox_dropped: float | None = Field(default=None, ge=0)
+    manual_enabled: bool | None = None
 
     @model_validator(mode='after')
     def consistency(self):

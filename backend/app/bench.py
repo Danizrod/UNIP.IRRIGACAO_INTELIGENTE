@@ -5,6 +5,7 @@ fora do Git; os resultados são calculados das contagens HX711 da telemetria, nu
 """
 import json
 import os
+import time
 import statistics
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -19,6 +20,8 @@ from app.store import connect
 DEVICE = os.environ.get('BENCH_DEVICE', 'esp32-01')
 SESSIONS = Path(os.environ.get('BENCH_SESSIONS', '/sessions'))
 REFILLS = Path(os.environ.get('BENCH_REFILLS', '/refills'))
+PUMP_TESTS = Path(os.environ.get('BENCH_PUMP_TESTS', '/pump-tests'))
+PULSE_MAX_MS = 2000  # firmware enforces the same cap, rest and dry-run budget
 EXPERIMENT = os.environ.get('BENCH_EXPERIMENT', 'tcc-2026')
 DOSE_ML = 50  # Common dose approved on 04/11 (protocol); the alert keeps three doses above the reserve.
 REFILL_ALERT_DOSES = 3
@@ -284,6 +287,62 @@ class Refill(BaseModel):
 def refill_message(body, refill_id, at):
     return dict(schema_version=1, refill_id=refill_id, device_id=DEVICE, experiment_id=EXPERIMENT,
                 total_ml=body.total_ml, reserve_ml=body.reserve_ml, issued_at=iso(at), expires_at=iso(at + timedelta(minutes=5)))
+
+
+def mqtt_client(tag):
+    import paho.mqtt.client as mqtt
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f'tcc-bench-{tag}', clean_session=True)
+    client.username_pw_set('backend', os.environ['MQTT_BACKEND_PASSWORD'])
+    client.tls_set(ca_certs='/certs/ca.crt')
+    return client
+
+
+class Pulse(BaseModel):
+    output: int = Field(ge=0, le=3)  # 0 = desligar todas
+    duration_ms: int = Field(default=1000, ge=0, le=PULSE_MAX_MS)
+
+
+def pulse_message(body, test_id, at):
+    return dict(schema_version=1, test_id=test_id, device_id=DEVICE, output=body.output, duration_ms=body.duration_ms,
+                issued_at=iso(at), expires_at=iso(at + timedelta(seconds=30)))
+
+
+@app.post('/api/pump')
+def pump_pulse(body: Pulse):
+    """Pulso manual (teste a seco): a placa aplica limites próprios e devolve o resultado medido."""
+    import threading
+    if body.output and body.duration_ms < 100:
+        raise HTTPException(422, 'Duração mínima de 100 ms.')
+    at, test_id = now(), str(uuid.uuid4())
+    message, result, done = pulse_message(body, test_id, at), {}, threading.Event()
+
+    def on_message(client, userdata, msg):
+        try:
+            data = json.loads(msg.payload)
+        except ValueError:
+            return
+        if data.get('test_id') == test_id:
+            result.update(data)
+            done.set()
+    client = mqtt_client(test_id[:8])
+    client.on_message = on_message
+    try:
+        client.connect(os.environ.get('MQTT_HOST', 'mosquitto'), 8883, keepalive=30)
+        client.loop_start()
+        client.subscribe(f'irrigation/v1/{DEVICE}/manual_result', qos=1)  # before publishing
+        time.sleep(0.3)
+        info = client.publish(f'irrigation/v1/{DEVICE}/manual', json.dumps(message), qos=1)
+        info.wait_for_publish(timeout=10)
+        done.wait(timeout=body.duration_ms / 1000 + 25)  # result travels with the telemetry queue
+    finally:
+        client.loop_stop()
+        client.disconnect()
+    record = dict(request=message, result=result or None, recorded_at=iso(now()))
+    PUMP_TESTS.mkdir(parents=True, exist_ok=True)
+    (PUMP_TESTS / f'{at:%Y%m%dT%H%M%S}-{test_id}.json').write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
+    if not result:
+        raise HTTPException(504, 'A placa não respondeu; considere a bomba desligada só depois de conferir visualmente.')
+    return result
 
 
 @app.post('/api/reservoir')
