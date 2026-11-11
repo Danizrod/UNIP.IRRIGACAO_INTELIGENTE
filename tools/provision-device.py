@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 KEYS = {'device','experiment','unit','broker','username','password','ca','ssid','wifi_password','ntp'}
 # Optional physical acquisition settings; absent => firmware publishes null, never a default.
 NUMERIC = {'scale_offset','scale_factor','dry1','wet1','dry2','wet2','dry3','wet3','telemetry_s'}
-OPTIONAL = NUMERIC | {'scale_cal','soil_cal','ina1','ina2','ina3'}
+OPTIONAL = NUMERIC | {'scale_cal','soil_cal','ina1','ina2','ina3','pump_test'}
 
 
 def private_path(path):
@@ -90,6 +90,9 @@ def validate(settings, mode):
             raise ValueError('Valor numérico inválido') from None
         if number!=number or number in (float('inf'),float('-inf')):
             raise ValueError('Valor numérico inválido')
+    # Manual dry pulses (bench page); '1' only after the power circuit is accepted.
+    if settings.get('pump_test','0') not in ('0','1'):
+        raise ValueError('pump_test deve ser "0" ou "1"')
     if 'telemetry_s' in settings and not 10<=float(settings['telemetry_s'])<=900:
         raise ValueError('telemetry_s deve ficar entre 10 e 900')
     if 'scale_factor' in settings and abs(float(settings['scale_factor']))<1e-6:

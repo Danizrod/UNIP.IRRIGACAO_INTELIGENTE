@@ -193,3 +193,17 @@ Testes na placa (`-3`/`-4`):
 - **Caminho:** o painel envia `irrigation/v1/esp32-01/manual`, e a placa responde em `.../manual_result` com o tempo ligado e o pico de corrente e a tensão mínima nos 3 canais do INA3221 (amostragem de ~100 ms durante o pulso).
 - **Limites no firmware:** até 2 s por pulso, 10 s de descanso por saída, até 10 s ligada por saída a cada 10 min, uma saída por vez, desligamento por timer de hardware e proteção extra no laço principal.
 - **Chave:** o recurso fica **travado** até existir `pump_test=1` na partição `provision`. A chave só será gravada depois da revisão do circuito de potência; hoje a placa responde `manual_disabled_until_circuit_review` (testado).
+
+**Chave liberada em 11/11/2026 por declaração do usuário** ("o mecanismo está correto"). Diodo, resistores de base, fonte e terra comum **não foram conferidos** por foto. Gravado `pump_test=1` (só partição `provision`). Primeiros pulsos a seco de 0,5 s, uma saída por vez (`data/raw/acionamentos/`):
+
+| Saída (GPIO) | Pico no INA3221 (amostras a ~100 ms) | Canais sem carga | Tensão mínima |
+|---|---|---|---|
+| 1 (GPIO25) | CH1 0,178 A | 0,001 A | 5,25 V |
+| 2 (GPIO26) | CH2 0,382 A | 0,001 A | 5,09 V |
+| 3 (GPIO27) | CH3 0,400 A | 0,001 A | 5,10 V |
+
+- **Mapeamento elétrico:** saída n → canal n do INA3221, observado.
+- **Pendente:** associar cada bomba ao seu vaso e tratamento (`ina1..3`).
+- **Corrente:** fica dentro da faixa de trabalho informada. A saída 1 mediu cerca de metade das outras; investigar a bomba ou o resistor de base.
+- **Tempo ligado:** o `on_ms` de 515–559 ms inclui a latência do laço; a saída é desligada pelo timer em 500 ms.
+
