@@ -446,6 +446,9 @@ extern "C" void app_main(){
   ESP_ERROR_CHECK(esp_netif_init());ESP_ERROR_CHECK(esp_event_loop_create_default());esp_netif_create_default_wifi_sta();wifi_init_config_t init=WIFI_INIT_CONFIG_DEFAULT();ESP_ERROR_CHECK(esp_wifi_init(&init));
   esp_sntp_config_t clock=ESP_NETIF_SNTP_DEFAULT_CONFIG(ntp.c_str());clock.start=false;clock.sync_cb=clock_synced;ESP_ERROR_CHECK(esp_netif_sntp_init(&clock));
   esp_mqtt_client_config_t cfg={};cfg.broker.address.uri=broker.c_str();cfg.broker.verification.certificate=ca.c_str();cfg.credentials.username=username.c_str();cfg.credentials.authentication.password=password.c_str();cfg.credentials.client_id=device.c_str();
+  // esp_mqtt_client_publish() waits on the client lock while a TLS reconnect is in progress; keep that
+  // under the 15 s task watchdog (two TASK_WDT resets right after power-up on 13/11 with 5 s).
+  cfg.network.timeout_ms=8000;
   mqtt=esp_mqtt_client_init(&cfg);esp_mqtt_client_register_event(mqtt,static_cast<esp_mqtt_event_id_t>(ESP_EVENT_ANY_ID),mqtt_event,nullptr);
   ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT,ESP_EVENT_ANY_ID,wifi_event,nullptr));ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT,IP_EVENT_STA_GOT_IP,wifi_event,nullptr));
   wifi_config_t w={};strncpy(reinterpret_cast<char*>(w.sta.ssid),ssid.c_str(),sizeof(w.sta.ssid)-1);strncpy(reinterpret_cast<char*>(w.sta.password),wifi_password.c_str(),sizeof(w.sta.password)-1);w.sta.threshold.authmode=WIFI_AUTH_WPA2_PSK;
