@@ -20,6 +20,8 @@ struct Snapshot {
 // Manual pump pulses: INA3221 sampled every ~100 ms while active; peaks/minimum since the last take.
 struct PowerPeaks {std::array<double,3> peak_current_a{{NAN,NAN,NAN}},min_bus_v{{NAN,NAN,NAN}};uint32_t samples=0;};
 void power_fast(bool on);
+// Pumps running (manual pulse or cycle): DHT22 reads are skipped until 2 s after they stop.
+void pumps_active(bool on);
 PowerPeaks take_peaks();
 void outputs_low();     // First action at boot: GPIO25/26/27 LOW (LED test state, not validated motor-off).
 void start();           // Sensor task pinned to the application core.

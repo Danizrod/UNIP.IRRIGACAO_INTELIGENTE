@@ -275,7 +275,7 @@ static void manual_result(const std::string& id,int output,const char* status,co
  char*s=cJSON_PrintUnformatted(j);if(s){enqueue({"irrigation/v1/"+device+"/manual_result",s});free(s);}cJSON_Delete(j);
 }
 static void manual_finish(const char* status,const char* reason){
- all_outputs_low();if(manual_timer)esp_timer_stop(manual_timer);hardware::power_fast(false);
+ all_outputs_low();if(manual_timer)esp_timer_stop(manual_timer);hardware::power_fast(false);hardware::pumps_active(false);
  int output=manual_output.exchange(-1);if(output<0)return;
  int64_t now=esp_timer_get_time()/1000,on=now-manual_started_ms;size_t i=output;
  manual_last_end_ms[i]=now;manual_used_ms[i]+=std::min(on,manual_max_ms+500);
@@ -300,7 +300,7 @@ static void manual_request(cJSON* j){
  else{if(now-manual_window_start_ms[i]>manual_window_ms){manual_window_start_ms[i]=now;manual_used_ms[i]=0;}
   if(manual_used_ms[i]+static_cast<int64_t>(duration)>manual_budget_ms)reason="dry_run_budget_10s_per_10min";}
  if(reason){manual_result(test,output,"rejected",reason,0,nullptr);ESP_LOGW(TAG,"Manual pulse rejected: %s",reason);return;}
- hardware::take_peaks();hardware::power_fast(true);
+ hardware::take_peaks();hardware::power_fast(true);hardware::pumps_active(true);
  manual_id=test;manual_started_ms=now;manual_timer_fired=false;manual_output=output-1;
  if(!manual_timer||esp_timer_start_once(manual_timer,static_cast<uint64_t>(duration)*1000)!=ESP_OK){manual_finish("failed","timer_unavailable");return;}
  gpio_set_level(static_cast<gpio_num_t>(bench::output_pins[i]),1);

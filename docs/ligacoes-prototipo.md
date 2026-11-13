@@ -240,3 +240,16 @@ Testes na placa (`-3`/`-4`):
 - **Efeito:** o ESP32 não conseguiu reconectar até o broker ser recriado.
 - **Ferramenta nova:** `tools/repair_ports.py` testa as portas e recria só o serviço afetado.
 - **Ação do usuário:** impedir a espera do notebook (tampa/botão de energia) durante o ensaio.
+
+### DHT22 alimentado pelo GPIO13 (13/11/2026)
+
+- **Mudança:** o usuário passou o VCC do DHT22 do 3V3 para o **GPIO13**.
+- **Firmware:**
+  - no boot, desliga o sensor por 1,5 s (VCC e dado em nível baixo, sem pull-up) e espera 2,5 s antes de ler;
+  - com 3 falhas seguidas, repete esse ciclo de energia (contado em `dht_resets`);
+  - não lê o sensor com bomba ligada nem até 2 s depois (`hardware::pumps_active`).
+- **Validado na placa (só USB):**
+  - leitura normal 13 s após o boot, sem falhas;
+  - um pulso de 0,5 s na saída 2 sem falha e sem reinício.
+- **Pendente:** repetir os pulsos de 2 s nas 3 bombas **com a fonte externa**. É esse teste que reproduz o travamento e confirma a recuperação pelo ciclo de energia. Não usar pulsos longos só com o USB.
+

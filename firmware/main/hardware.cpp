@@ -16,6 +16,10 @@ namespace hardware {
 static constexpr const char* TAG="hardware";
 static constexpr auto hx_dout=static_cast<gpio_num_t>(bench::hx_dout),hx_sck=static_cast<gpio_num_t>(bench::hx_sck);
 static constexpr auto dht_pin=static_cast<gpio_num_t>(bench::dht_data);
+static constexpr auto dht_vcc=static_cast<gpio_num_t>(bench::dht_power);
+static constexpr int64_t dht_off_ms=1500,dht_settle_ms=2500;  // power-off time; DHT22 needs ~1-2 s after power-up
+static constexpr uint32_t dht_cycle_after=3;                   // consecutive misses before a power cycle
+static volatile bool pumps_on=false;static volatile int64_t pumps_off_at_ms=0;
 static constexpr double shunt_ohm=0.1; // R100 seen on the module; calibration still pending.
 static portMUX_TYPE timing=portMUX_INITIALIZER_UNLOCKED;
 static SemaphoreHandle_t lock=nullptr;
@@ -107,6 +111,11 @@ static std::optional<Climate> dht_read(){
  return ok?dht22_decode(frame):std::nullopt;
 }
 
+// VCC and data both low while off, so the sensor is not fed through the data pull-up.
+static void dht_power_off(){gpio_set_pull_mode(dht_pin,GPIO_FLOATING);gpio_set_level(dht_pin,0);gpio_set_level(dht_vcc,0);}
+static void dht_power_on(){gpio_set_level(dht_vcc,1);gpio_set_pull_mode(dht_pin,GPIO_PULLUP_ONLY);gpio_set_level(dht_pin,1);}
+static int64_t dht_powered_off_until=0;
+
 static void task(void*){
  esp_task_wdt_add(nullptr);
  int64_t next_slow=0,next_dht=now_ms()+2000,last_ready=now_ms();
@@ -129,14 +138,15 @@ static void task(void*){
    if(partial.ina_ok)++peaks.samples;
    xSemaphoreGive(lock);
    next_slow=now+(fast_power?100:1000);}
-  if(now>=next_dht){auto climate=dht_read();
+  if(dht_powered_off_until&&now>=dht_powered_off_until){dht_power_on();dht_powered_off_until=0;next_dht=now+dht_settle_ms;}
+  // Skip reads while a pump runs and for 2 s after (motor noise corrupts frames and can latch the sensor).
+  bool quiet=!pumps_on&&now-pumps_off_at_ms>=2000;
+  if(!dht_powered_off_until&&quiet&&now>=next_dht){auto climate=dht_read();
    xSemaphoreTake(lock,portMAX_DELAY);if(climate){shared.climate=climate;shared.climate_at_ms=now_ms();shared.climate_streak=0;}else{++shared.climate_faults;++shared.climate_streak;}
-   uint32_t streak=shared.climate_streak;if(streak&&streak%5==0)++shared.climate_resets;xSemaphoreGive(lock);
+   uint32_t streak=shared.climate_streak;bool cycle=streak&&streak%dht_cycle_after==0;if(cycle)++shared.climate_resets;xSemaphoreGive(lock);
    next_dht=now+3000;
-   // 10/11: DHT22 stopped answering after pump pulses until the board restarted. Every 5 misses,
-   // re-initialise the line and leave it idle-high 2 s before the next start signal.
-   if(streak&&streak%5==0){ESP_LOGW(TAG,"DHT22: %u failed reads; re-initialising GPIO%d",static_cast<unsigned>(streak),bench::dht_data);
-    gpio_reset_pin(dht_pin);gpio_set_direction(dht_pin,GPIO_MODE_INPUT_OUTPUT_OD);gpio_set_pull_mode(dht_pin,GPIO_PULLUP_ONLY);gpio_set_level(dht_pin,1);next_dht=now+2000;}}
+   // 10-11/11: the latched sensor only recovered after losing power; cut VCC (GPIO13) and data.
+   if(cycle){ESP_LOGW(TAG,"DHT22: %u failed reads; power-cycling via GPIO%d",static_cast<unsigned>(streak),bench::dht_power);dht_power_off();dht_powered_off_until=now+dht_off_ms;}}
   esp_task_wdt_reset();
   vTaskDelay(pdMS_TO_TICKS(10));
  }
@@ -146,12 +156,16 @@ void start(){
  lock=xSemaphoreCreateMutex();
  gpio_reset_pin(hx_sck);gpio_set_direction(hx_sck,GPIO_MODE_OUTPUT);gpio_set_level(hx_sck,0);
  gpio_reset_pin(hx_dout);gpio_set_direction(hx_dout,GPIO_MODE_INPUT);
- gpio_reset_pin(dht_pin);gpio_set_direction(dht_pin,GPIO_MODE_INPUT_OUTPUT_OD);gpio_set_pull_mode(dht_pin,GPIO_PULLUP_ONLY);gpio_set_level(dht_pin,1);
+ gpio_reset_pin(dht_pin);gpio_set_direction(dht_pin,GPIO_MODE_INPUT_OUTPUT_OD);
+ gpio_reset_pin(dht_vcc);gpio_set_direction(dht_vcc,GPIO_MODE_OUTPUT);
+ // Boot also power-cycles the sensor (clears a latch from before the reset); first read after settling.
+ dht_power_off();dht_powered_off_until=now_ms()+dht_off_ms;
  ina_init();soil_init();
  xTaskCreatePinnedToCore(task,"sensors",4096,nullptr,5,nullptr,1);
 }
 
 void power_fast(bool on){fast_power=on;kick_power=on;}
+void pumps_active(bool on){if(pumps_on&&!on)pumps_off_at_ms=now_ms();pumps_on=on;}
 PowerPeaks take_peaks(){xSemaphoreTake(lock,portMAX_DELAY);PowerPeaks out=peaks;peaks=PowerPeaks{};xSemaphoreGive(lock);return out;}
 
 Snapshot snapshot(){

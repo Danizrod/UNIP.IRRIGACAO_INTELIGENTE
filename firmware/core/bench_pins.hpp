@@ -12,6 +12,9 @@ constexpr int i2c_sda = 21;
 constexpr int i2c_scl = 22;
 constexpr int ina_address = 0x40;
 constexpr int dht_data = 18;
+// 13/11/2026: DHT22 VCC moved by the user from 3V3 to GPIO13 so firmware can power-cycle it
+// (motor noise latches the sensor; only a power loss recovered it on 10-11/11).
+constexpr int dht_power = 13;
 constexpr std::array<int, 3> soil_pins{{32, 33, 34}};
 constexpr std::array<char, 3> soil_labels{{'B', 'A', 'C'}};
 constexpr std::array<int, 3> output_pins{{25, 26, 27}};
