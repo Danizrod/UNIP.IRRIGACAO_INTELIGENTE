@@ -99,11 +99,11 @@ code{font-family:var(--mono);font-size:13px}
   </section>
 
   <section class="card">
-    <h2>Bombas — acionamento manual (teste a seco)</h2>
+    <h2>Bombas — acionamento manual</h2>
     <div class="alert unknown" id="pumpGate">Aguardando a placa…</div>
     <div class="row">
       <label for="pulseMs" style="margin:0">Duração do pulso</label>
-      <select id="pulseMs" style="width:auto"><option value="500">0,5 s</option><option value="1000" selected>1 s</option><option value="2000">2 s (máximo)</option></select>
+      <select id="pulseMs" style="width:auto"><option value="500">0,5 s</option><option value="1000" selected>1 s</option><option value="2000">2 s (máximo a seco)</option><option value="2500">2,5 s — só na água (dose da bomba 3)</option></select>
     </div>
     <div class="row">
       <button class="primary pumpBtn" data-out="1">Bomba 3 · pot-03 (T3) — saída 1</button>
@@ -214,16 +214,18 @@ function renderPumpGate(p){
   $('pumpGate').textContent=on?'Acionamento manual LIBERADO na placa. Bomba fora da água: use pulsos curtos.':'Acionamento travado na placa até a revisão do circuito de potência (chave pump_test). Os botões só recebem a recusa da placa.';
 }
 async function pulse(output){
-  const ms=Number($('pulseMs').value);
+  const ms=Number($('pulseMs').value),wet=ms>2000;
+  // Above 2 s the board only accepts wet mode (pump submerged): 10 s max, 120 s per 10 min.
+  if(output&&wet&&!await ask(`Pulso de ${String(ms/1000).replace(".",",")} s só com a bomba SUBMERSA na água. Confirmar?`))return;
   document.querySelectorAll('.pumpBtn').forEach(b=>b.disabled=true);
   $('pumpResult').textContent=output?`Enviando pulso de ${ms} ms para a saída ${output}…`:'Desligando todas as saídas…';
   try{
-    const d=await api('/api/pump',{output,duration_ms:output?ms:0});
+    const d=await api('/api/pump',{output,duration_ms:output?ms:0,mode:wet?'wet':'dry'});
     const ina=(d.ina||[]).map(c=>`<tr><td>Canal ${c.channel}</td><td>${fmt(c.peak_current_a,3)} A</td><td>${fmt(c.min_bus_v,2)} V</td></tr>`).join('');
     const reasons={manual_disabled_until_circuit_review:'travado até a revisão do circuito',rest_between_pulses:'aguarde 10 s entre pulsos da mesma saída',dry_run_budget_10s_per_10min:'limite de 10 s ligada a cada 10 min atingido',another_output_running:'outra saída está ligada',duration_out_of_limits:'duração fora do limite',expired_or_future:'pedido vencido (relógio)',irrigation_cycle_running:'há um ciclo de irrigação em andamento',duration_elapsed:'concluído pelo timer',stop_requested:'parado',all_outputs_low:'todas as saídas desligadas',timer_overrun_forced_off:'desligado pela proteção de tempo'};
     const cls=d.status==='done'||d.status==='stopped'?'good':'bad';
     $('pumpResult').innerHTML=`<div class="verdict ${cls}">Saída ${d.output}: ${d.status} — ${reasons[d.reason]||d.reason}</div>`+
-      (d.status==='done'?`<p>Ligada por ${fmt(d.on_ms,0)} ms (pedido ${fmt(d.requested_ms,0)} ms) · tempo restante no limite a seco: ${fmt((d.budget_left_ms||0)/1000,1)} s · ${d.ina_samples} leituras do INA3221.</p>
+      (d.status==='done'?`<p>Ligada por ${fmt(d.on_ms,0)} ms (pedido ${fmt(d.requested_ms,0)} ms) · tempo restante no limite ${d.mode==='wet'?'na água':'a seco'}: ${fmt((d.budget_left_ms||0)/1000,1)} s · ${d.ina_samples} leituras do INA3221.</p>
       <table><tr><th>INA3221</th><th>Corrente de pico</th><th>Tensão mínima</th></tr>${ina}</table>`:'');
     if(d.status==='done')beep(880,120);
   }catch(e){$('pumpResult').textContent='Falhou: '+e.message;}
