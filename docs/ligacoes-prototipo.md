@@ -252,5 +252,5 @@ Testes na placa (`-3`/`-4`):
   - leitura normal 13 s após o boot, sem falhas;
   - um pulso de 0,5 s na saída 2 sem falha e sem reinício.
 - **Com fonte externa (13/11):** pulsos de 2 s nas 3 bombas (0,39–0,41 A, mínimo de 5,17 V). Houve 3 falhas de leitura, **1 ciclo de energia automático, e a leitura voltou sozinha**, mantendo-se estável nos 90 s seguintes. A recuperação está validada.
-- **Watchdog:** dois reinícios `TASK_WDT` (motivo 6) às 20:51, logo após o religamento da placa. A causa provável (não confirmada por backtrace) é `esp_mqtt_client_publish` esperando a reconexão TLS por até 10 s, com o watchdog em 5 s. Watchdog ajustado para 15 s e timeout de rede MQTT para 8 s; **compilado, falta gravar** (placa sem USB).
+- **Watchdog:** dois reinícios `TASK_WDT` (motivo 6) às 20:51, logo após o religamento da placa. A causa provável (não confirmada por backtrace) é `esp_mqtt_client_publish` esperando a reconexão TLS por até 10 s, com o watchdog em 5 s. Watchdog ajustado para 15 s e timeout de rede MQTT para 8 s, gravados em 13/11. Teste com o broker derrubado e religado 3 vezes seguidas: 3 reconexões, nenhum reinício (uptime contínuo de 223 s) e nenhum aviso de watchdog na serial.
 
