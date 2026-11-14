@@ -116,6 +116,13 @@ code{font-family:var(--mono);font-size:13px}
   </section>
 
   <section class="card">
+    <h2>Calibração do solo (seco e saturado)</h2>
+    <div class="note">Para cada vaso: com o substrato <b>seco</b> e o sensor na posição final, espere a leitura estabilizar ~2 min e clique em "Registrar seco". Depois sature o vaso, deixe drenar até parar de pingar (~30 min), espere estabilizar e clique em "Registrar saturado". O valor gravado é a mediana dos últimos 2 min. Nada é gravado na placa: envie ao Claude quando os três estiverem prontos.</div>
+    <table id="soilTable" style="margin-top:10px"><tr><th>Vaso</th><th>ADC agora</th><th>Seco</th><th>Saturado</th><th></th></tr></table>
+    <div id="soilStatus" class="small" style="margin-top:8px"></div>
+  </section>
+
+  <section class="card">
     <h2>Balança — últimos 15 minutos</h2>
     <svg id="chart" viewBox="0 0 1000 220" preserveAspectRatio="none" role="img" aria-label="Massa da balança nos últimos 15 minutos"></svg>
     <div class="small" id="chartInfo">—</div>
@@ -130,6 +137,7 @@ code{font-family:var(--mono);font-size:13px}
           <option value="press">1. Teste de pressão (tampa livre?) — ~4 min</option>
           <option value="calibration">2. Calibração: zero e fator — ~14 min</option>
           <option value="withdrawal">3. Retirada de 50 g × 10 — ~14 min</option>
+          <option value="flow">4. Vazão das bombas (na água) — ~12 min</option>
         </select>
         <label for="massRef" id="massLabel">Massa de referência (g)</label>
         <input id="massRef" type="number" step="0.1" min="1">
@@ -213,6 +221,27 @@ async function pulse(output){
 document.querySelectorAll('.pumpBtn').forEach(b=>b.addEventListener('click',()=>pulse(Number(b.dataset.out))));
 $('pumpStop').addEventListener('click',()=>pulse(0));
 
+// ---------- calibração do solo ----------
+let soilCal={units:{}};
+async function loadSoil(){try{const r=await fetch('/api/soil');if(r.ok)soilCal=await r.json();}catch(e){}renderSoil();}
+function renderSoil(){
+  const units=(live&&live.units)||[];
+  const rows=['pot-01','pot-02','pot-03'].map(id=>{
+    const u=units.find(x=>x.unit_id===id),c=soilCal.units[id]||{};
+    const cell=pt=>pt?`${pt.median} <span class="small">(${new Date(pt.at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})})</span>`:'—';
+    return `<tr><td>${id} (${u?u.treatment:'?'})</td><td>${u&&u.payload.soil_raw!=null?u.payload.soil_raw:'—'}</td><td>${cell(c.dry)}</td><td>${cell(c.wet)}</td>
+      <td style="white-space:nowrap"><button data-u="${id}" data-s="dry" class="soilBtn">Registrar seco</button> <button data-u="${id}" data-s="wet" class="soilBtn">Registrar saturado</button>${c.ready?' <span class="good">pronto</span>':''}</td></tr>`;}).join('');
+  $('soilTable').innerHTML=`<tr><th>Vaso</th><th>ADC agora</th><th>Seco</th><th>Saturado</th><th></th></tr>${rows}`;
+  document.querySelectorAll('.soilBtn').forEach(b=>b.onclick=()=>recordSoil(b.dataset.u,b.dataset.s));
+}
+async function recordSoil(unit,state){
+  const label=state==='dry'?'SECO':'SATURADO (já drenado)';
+  if(!confirm(`Registrar ${unit} como ${label}? Use a mediana dos últimos 2 min.`))return;
+  $('soilStatus').textContent='Registrando…';
+  try{const d=await api('/api/soil',{unit_id:unit,state});$('soilStatus').textContent=`${unit} ${state==='dry'?'seco':'saturado'}: ADC ${d.median} (${d.n} leituras, variação ${d.spread}).`;await loadSoil();}
+  catch(e){$('soilStatus').textContent='Não registrado: '+e.message;}
+}
+
 // ---------- leituras ao vivo ----------
 async function poll(){
   try{
@@ -228,7 +257,7 @@ function render(){
   const age=Math.min(...units.map(u=>u.age_s));
   setConn(age<=30?'ok':age<=120?'late':'off',age<=30?`ao vivo · última leitura há ${Math.round(age)} s`:`sem dados há ${Math.round(age)} s`);
   const p=units[0].payload;
-  renderReservoir();renderPumpGate(p);
+  renderReservoir();renderPumpGate(p);renderSoil();
   $('mass').textContent=p.reservoir_mass_g==null?'—':fmt(p.reservoir_mass_g)+' g';
   $('massInfo').textContent=`oscilação em 1 s: ${fmt(p.scale_span_g)} g · ${p.mass_stable?'estável':'instável'} · contagens ${p.scale_counts??'—'}`;
   $('temp').textContent=p.temperature_c==null?'—':fmt(p.temperature_c)+' °C';
@@ -267,6 +296,7 @@ function drawChart(){
 const HELP={
   press:'Balança vazia. Quando pedir, aperte o centro da tampa com o dedo, de leve, e solte quando mandar. Verifica se a tampa volta sempre ao mesmo valor (sem raspar na caixa).',
   calibration:'Use o pote pesado na balança de cozinha (informe a massa exata). A balança começa vazia; você alterna vazio e pote três vezes. Coloque sempre no centro e não encoste durante a contagem.',
+  flow:'As três bombas precisam estar SUBMERSAS no reservatório, que deve estar sobre a balança, com cada mangueira levada ao seu vaso e a saída acima do nível da água. Cada bomba recebe 4 pulsos de 5 s; o 1º só enche a mangueira e fica fora da média. Não encoste na balança nem no reservatório.',
   withdrawal:'Deixe o pote sobre a balança durante todo o teste. Informe a massa exata do saquinho (~50 g). Você coloca o saquinho sobre o pote e retira, 10 vezes. Use o fator da calibração.'
 };
 function buildPlan(kind){
@@ -280,13 +310,21 @@ function buildPlan(kind){
     for(let i=0;i<3;i++)p.push({load:'loaded',label:'Coloque o pote no centro',s:120},{load:'empty',label:'Retire o pote',s:120});
     return p;
   }
+  if(kind==='flow'){
+    const p=[];
+    for(const [out,name] of [[3,'bomba 1 · pot-01 (T1)'],[2,'bomba 2 · pot-02 (T2)'],[1,'bomba 3 · pot-03 (T3)']]){
+      p.push({load:'empty',label:`Não encoste — medindo antes da ${name}`,s:40});
+      for(let i=0;i<4;i++)p.push({load:'pulse',output:out,label:`Ligando ${name} por 5 s (${i+1}/4${i?'':', enche a mangueira'})`,s:8},{load:'empty',label:`Não encoste — medindo depois (${i+1}/4)`,s:40});
+    }
+    return p;
+  }
   const p=[{load:'empty',label:'Pote sozinho sobre a balança',s:40}];
   for(let i=0;i<10;i++)p.push({load:'loaded',label:`Coloque o saquinho sobre o pote (${i+1}/10)`,s:40},{load:'empty',label:`Retire o saquinho (${i+1}/10)`,s:40});
   return p;
 }
 function syncSetup(){
   const k=$('kind').value;$('kindHelp').textContent=HELP[k];
-  const show=k!=='press';$('massLabel').hidden=!show;$('massRef').hidden=!show;
+  const show=k!=='press'&&k!=='flow';$('massLabel').hidden=!show;$('massRef').hidden=!show;
   $('massLabel').textContent=k==='calibration'?'Massa do pote com arroz (g)':'Massa do saquinho (g)';
   $('massRef').value=k==='calibration'?600:50;
   $('factor').disabled=k==='calibration';
@@ -308,10 +346,11 @@ if('speechSynthesis' in window)speechSynthesis.onvoiceschanged=()=>{};
 async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(!r.ok)throw new Error(await r.text());return r.json();}
 $('startBtn').addEventListener('click',async()=>{
   const kind=$('kind').value;const mass=Number($('massRef').value);const factor=Number($('factor').value);
-  if(kind!=='press'&&!(mass>0)){alert('Informe a massa de referência.');return;}
+  if(kind!=='press'&&kind!=='flow'&&!(mass>0)){alert('Informe a massa de referência.');return;}
+  if(kind==='flow'&&!confirm('As três bombas estão submersas na água do reservatório, e as mangueiras vão até os vasos?'))return;
   if(kind!=='calibration'&&!(factor)){alert('Fator indisponível: aguarde as leituras ou faça a calibração.');return;}
   plan=buildPlan(kind);
-  try{session=await api('/api/sessions',{kind,mass_g:kind==='press'?null:mass,factor:kind==='calibration'?null:factor});}
+  try{session=await api('/api/sessions',{kind,mass_g:kind==='press'||kind==='flow'?null:mass,factor:kind==='calibration'?null:factor,pulse_ms:kind==='flow'?5000:null});}
   catch(e){alert('Não foi possível iniciar: '+e.message);return;}
   session.steps=[];$('setup').hidden=true;$('run').hidden=false;
   say('Teste iniciado.');beep(660);stepIdx=-1;await nextStep();
@@ -323,7 +362,7 @@ async function nextStep(){
   if(idx>=plan.length){stepIdx=idx;await stop(false);return;}
   const st=plan[idx];
   // Advance only after the server stamped the step; a failed mark is retried on the next tick.
-  const mark=await api(`/api/sessions/${session.id}/steps`,{index:idx,load:st.load,label:st.label,planned_s:st.s});
+  const mark=await api(`/api/sessions/${session.id}/steps`,{index:idx,load:st.load,label:st.label,planned_s:st.s,output:st.output||null});
   stepIdx=idx;
   if(session.steps.length)session.steps[session.steps.length-1].ended_at=mark.started_at;
   session.steps.push({index:stepIdx,load:st.load,label:st.label,started_at:mark.started_at});
@@ -331,7 +370,13 @@ async function nextStep(){
   $('stage').className='stage '+st.load;$('instr').textContent=st.label;
   $('stepNo').textContent=`Etapa ${stepIdx+1} de ${plan.length}`;
   const nx=plan[stepIdx+1];$('next').textContent=nx?`Próximo: ${nx.label}`:'Próximo: fim do teste';
-  beep(1046,220);say(st.label+(st.load==='press'?'':'. Não encoste durante a contagem.'));
+  beep(1046,220);say(st.label+(st.load==='press'||st.load==='pulse'?'':'. Não encoste durante a contagem.'));
+  if(st.load==='pulse'){
+    // Wet pulse: the board enforces 10 s max and 120 s per 10 min per output; a refusal stops the test.
+    api('/api/pump',{output:st.output,duration_ms:5000,mode:'wet'}).then(d=>{
+      if(d.status!=='done')stop(true).then(()=>{say('A placa recusou o pulso. Teste cancelado.');$('result').textContent=`Pulso recusado pela placa: ${d.reason}. Teste cancelado.`;});
+    }).catch(e=>stop(true).then(()=>{say('Falha no pulso. Teste cancelado.');$('result').textContent='Falha no pulso: '+e.message;}));
+  }
 }
 function tick(){
   if(advancing||stepIdx<0||stepIdx>=plan.length)return;
@@ -370,6 +415,12 @@ async function showResult(id){
       <table><tr><th>Carga</th><th>Δ contagens</th><th>Fator</th><th>Deriva do vazio</th></tr>${a.factors.map(f=>`<tr><td>etapa ${f.step+1}</td><td>${fmt(f.delta_counts,0)}</td><td>${fmt(f.factor,4)}</td><td>${fmt(f.empty_drift_counts/a.factor,1)} g</td></tr>`).join('')}</table>
       <p class="note">Fator de carga total (0 → massa do pote). Em 06/11 ele diferiu ~9 % do fator incremental de 50 g; para retiradas, confira com o teste de 50 g. O painel não grava a placa.</p>`;
     }
+  }else if(d.session.kind==='flow'){
+    const names={3:'Bomba 1 · pot-01 (T1)',2:'Bomba 2 · pot-02 (T2)',1:'Bomba 3 · pot-03 (T3)'};
+    html=`<div class="verdict ${a.ok?'good':'bad'}">${a.ok?'Vazão medida nas três bombas':'Vazão incompleta — confira as leituras'}</div>
+    <table><tr><th>Bomba</th><th>Vazão</th><th>Variação</th><th>Tempo p/ ${fmt(a.dose_ml,0)} mL</th></tr>${a.pumps.map(p=>`<tr><td>${names[p.output]||'saída '+p.output}</td><td>${fmt(p.ml_per_s,1)} mL/s</td><td>${p.spread_pct==null?'—':fmt(p.spread_pct,0)+' %'}</td><td>${p.dose_s==null?'—':fmt(p.dose_s,1)+' s'}</td></tr>`).join('')}</table>
+    <details><summary>Repetições</summary><table><tr><th>Bomba</th><th>Pulso</th><th>Retirado (g)</th><th>mL/s</th></tr>${a.pumps.flatMap(p=>p.reps.map((x,i)=>`<tr><td>${names[p.output]||p.output}</td><td>${i+1}${x.priming?' (escorva)':''}</td><td>${fmt(x.ml,1)}</td><td>${fmt(x.ml_per_s,1)}</td></tr>`)).join('')}</table></details>
+    <p class="note">Água = diferença da balança antes/depois de cada pulso (fator ${fmt(a.factor,3)} contagens/g, 1 g = 1 mL). Envie estes valores ao Claude: o tempo de dose é gravado na placa por ele.</p>`;
   }else if(d.session.kind==='withdrawal'){
     const cls=a.approved?'good':'bad';
     html=`<div class="verdict ${cls}">${a.within_2g} de ${a.total} retiradas com erro ≤ 2 g — ${a.approved?'critério atendido':'critério não atendido (≥ 9 de 10)'}</div>
@@ -384,7 +435,7 @@ async function showResult(id){
   $('result').innerHTML=html+`<p class="note">${temp}</p><details><summary>Etapas</summary>${steps}</details>`;
 }
 
-syncSetup();poll();setInterval(poll,2000);
+syncSetup();poll();setInterval(poll,2000);loadSoil();
 </script>
 </body>
 </html>

@@ -104,3 +104,8 @@ O ESP32 publica pelo Wi-Fi no broker do notebook; o notebook fica ligado com Doc
 **Bombas (teste a seco):** botões para as saídas 1–3 (GPIO25/26/27), escolha de 0,5/1/2 s e Parar tudo. O pulso só é aplicado com a chave `pump_test=1` provisionada; os limites estão no firmware. O resultado mostra o pico de corrente e a tensão mínima por canal do INA3221. Registros em `data/raw/acionamentos/`.
 
 **Portas após suspensão do Windows:** se o painel, a API ou o ESP32 pararem enquanto o Grafana funciona, rode `python tools/repair_ports.py` (`--check` só diagnostica). Ele recria apenas o contêiner cuja porta publicada não responde.
+
+**Vazão (teste 4 do painel):** com as bombas submersas e o reservatório sobre a balança, cada bomba recebe 4 pulsos de 5 s no modo `wet`. O firmware limita esse modo a 10 s por pulso e 120 s por saída a cada 10 min. A água de cada pulso é a diferença da mediana da balança antes e depois (etapas de 40 s, primeiros 15 s descartados). O 1º pulso enche a mangueira e fica fora da média. O resultado mostra mL/s, a variação e o tempo para a dose de 50 mL.
+
+**Calibração do solo:** para cada vaso, "Registrar seco" e "Registrar saturado" (após drenar) gravam a mediana do ADC dos últimos 2 min. São exigidas ≥ 6 leituras com variação ≤ 150; o vaso fica pronto com diferença ≥ 200. Arquivo em `data/raw/calibracao-solo/calibracao-solo.json`. A gravação na placa (`soil_cal`, `dry1..3`, `wet1..3`) é feita pelo provisionamento.
+

@@ -97,6 +97,10 @@ static bool save_reservoir(std::optional<double> ml,double reserve_ml){
 // key pump_test=1 is present (set only after the power circuit is reviewed). Hard limits for running
 // out of water: <=2 s per pulse, 10 s rest per output, <=10 s on-time per output per 10 min, one at a time.
 static constexpr int64_t manual_max_ms=2000,manual_rest_ms=10000,manual_budget_ms=10000,manual_window_ms=600000;
+// Wet mode (pump submerged, flow calibration; the user confirms on the page): longer pulses, larger budget.
+static constexpr int64_t wet_max_ms=10000,wet_budget_ms=120000;
+static bool manual_wet=false;
+static int64_t manual_pulse_ms=0; // accepted pulse length (overrun guard); not changed by later requests
 static bool manual_enabled=false;
 static std::atomic<int> manual_output{-1};
 static std::atomic<bool> manual_timer_fired{false};
@@ -267,7 +271,8 @@ static void manual_result(const std::string& id,int output,const char* status,co
  cJSON_AddNumberToObject(j,"requested_ms",static_cast<double>(manual_requested_ms));cJSON_AddNumberToObject(j,"on_ms",static_cast<double>(on_ms));
  cJSON_AddStringToObject(j,"at",event_stamp().c_str());
  if(output>=1&&output<=3){int64_t now=esp_timer_get_time()/1000;size_t i=output-1;
-  int64_t used=now-manual_window_start_ms[i]>manual_window_ms?0:manual_used_ms[i];cJSON_AddNumberToObject(j,"budget_left_ms",static_cast<double>(std::max<int64_t>(0,manual_budget_ms-used)));}
+  int64_t used=now-manual_window_start_ms[i]>manual_window_ms?0:manual_used_ms[i];cJSON_AddNumberToObject(j,"budget_left_ms",static_cast<double>(std::max<int64_t>(0,(manual_wet?wet_budget_ms:manual_budget_ms)-used)));}
+ cJSON_AddStringToObject(j,"mode",manual_wet?"wet":"dry");
  if(peaks){auto a=cJSON_AddArrayToObject(j,"ina");cJSON_AddNumberToObject(j,"ina_samples",peaks->samples);
   for(size_t ch=0;ch<3;++ch){auto c=cJSON_CreateObject();cJSON_AddNumberToObject(c,"channel",ch+1);
    add_optional(c,"peak_current_a",std::isfinite(peaks->peak_current_a[ch])?std::optional<double>(peaks->peak_current_a[ch]):std::nullopt);
@@ -278,7 +283,7 @@ static void manual_finish(const char* status,const char* reason){
  all_outputs_low();if(manual_timer)esp_timer_stop(manual_timer);hardware::power_fast(false);hardware::pumps_active(false);
  int output=manual_output.exchange(-1);if(output<0)return;
  int64_t now=esp_timer_get_time()/1000,on=now-manual_started_ms;size_t i=output;
- manual_last_end_ms[i]=now;manual_used_ms[i]+=std::min(on,manual_max_ms+500);
+ manual_last_end_ms[i]=now;manual_used_ms[i]+=std::min(on,(manual_wet?wet_max_ms:manual_max_ms)+500);
  auto peaks=hardware::take_peaks();manual_result(manual_id,output+1,status,reason,on,&peaks);
  ESP_LOGI(TAG,"Manual pulse output %d ended after %lld ms (%s)",output+1,static_cast<long long>(on),reason);
 }
@@ -288,20 +293,23 @@ static void manual_request(cJSON* j){
  if(num(j,"schema_version")!=1||!valid_uuid(id)||!dev||device!=dev)return;
  std::string test=id;int output=std::isfinite(output_n)?static_cast<int>(output_n):-1;
  manual_requested_ms=std::isfinite(duration)?static_cast<int64_t>(duration):0;
+ auto mode=str(j,"mode");bool wet=mode&&!strcmp(mode,"wet");
+ if(manual_output.load()<0)manual_wet=wet; // result labels follow the request unless a pulse is running
+ int64_t max_ms=wet?wet_max_ms:manual_max_ms,budget_ms=wet?wet_budget_ms:manual_budget_ms;
  if(output==0){manual_finish("stopped","stop_requested");manual_result(test,0,"stopped","all_outputs_low",0,nullptr);return;}
  const char* reason=nullptr;int64_t now=esp_timer_get_time()/1000;size_t i=output>=1&&output<=3?output-1:0;
  if(output<1||output>3)reason="invalid_output";
  else if(!issued||expires<=issued||expires-issued>60||now_s<issued-5||now_s>=expires)reason="expired_or_future";
  else if(!manual_enabled)reason="manual_disabled_until_circuit_review";
- else if(!std::isfinite(duration)||duration<100||duration>manual_max_ms)reason="duration_out_of_limits";
+ else if(!std::isfinite(duration)||duration<100||duration>max_ms)reason="duration_out_of_limits";
  else if(controller->running())reason="irrigation_cycle_running";
  else if(manual_output.load()>=0)reason="another_output_running";
  else if(manual_last_end_ms[i]&&now-manual_last_end_ms[i]<manual_rest_ms)reason="rest_between_pulses";
  else{if(now-manual_window_start_ms[i]>manual_window_ms){manual_window_start_ms[i]=now;manual_used_ms[i]=0;}
-  if(manual_used_ms[i]+static_cast<int64_t>(duration)>manual_budget_ms)reason="dry_run_budget_10s_per_10min";}
+  if(manual_used_ms[i]+static_cast<int64_t>(duration)>budget_ms)reason=wet?"wet_budget_120s_per_10min":"dry_run_budget_10s_per_10min";}
  if(reason){manual_result(test,output,"rejected",reason,0,nullptr);ESP_LOGW(TAG,"Manual pulse rejected: %s",reason);return;}
  hardware::take_peaks();hardware::power_fast(true);hardware::pumps_active(true);
- manual_id=test;manual_started_ms=now;manual_timer_fired=false;manual_output=output-1;
+ manual_id=test;manual_started_ms=now;manual_timer_fired=false;manual_pulse_ms=static_cast<int64_t>(duration);manual_wet=wet;manual_output=output-1;
  if(!manual_timer||esp_timer_start_once(manual_timer,static_cast<uint64_t>(duration)*1000)!=ESP_OK){manual_finish("failed","timer_unavailable");return;}
  gpio_set_level(static_cast<gpio_num_t>(bench::output_pins[i]),1);
  ESP_LOGW(TAG,"Manual pulse: output %d (GPIO%d) for %d ms",output,bench::output_pins[i],static_cast<int>(duration));
@@ -491,7 +499,7 @@ extern "C" void app_main(){
 #if !CONFIG_IRRIGATION_SIMULATION
   if(manual_output.load()>=0){int64_t now_ms=esp_timer_get_time()/1000;
    if(manual_timer_fired.load())manual_finish("done","duration_elapsed");
-   else if(now_ms-manual_started_ms>manual_max_ms+300)manual_finish("failed","timer_overrun_forced_off");}
+   else if(now_ms-manual_started_ms>manual_pulse_ms+300)manual_finish("failed","timer_overrun_forced_off");}
 #endif
   {int64_t now_ms=esp_timer_get_time()/1000;
    if(connected)mqtt_down_since_ms=now_ms;

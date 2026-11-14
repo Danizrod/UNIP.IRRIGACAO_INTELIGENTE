@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.store import connect
 
@@ -28,7 +28,9 @@ REFILL_ALERT_DOSES = 3
 PAGE = Path(__file__).with_name('bench_static') / 'index.html'
 # Readings right after a load change are discarded: settling plus telemetry delivery delay.
 SETTLE_S = 15
-KINDS = ('calibration', 'withdrawal', 'press')
+KINDS = ('calibration', 'withdrawal', 'press', 'flow')
+SOIL = Path(os.environ.get('BENCH_SOIL', '/soil'))
+WET_MAX_MS = 10000  # firmware: wet (submerged) pulses up to 10 s, 120 s per output per 10 min
 
 app = FastAPI(title='TCC — painel de bancada', version='0.1.0')
 
@@ -56,7 +58,7 @@ def summarize(steps, samples, settle_s=SETTLE_S):
         if not step.get('ended_at'):
             continue
         counts = step_counts(step, samples, settle_s)
-        out.append(dict(index=step['index'], load=step['load'], label=step['label'], n=len(counts),
+        out.append(dict(index=step['index'], load=step['load'], label=step['label'], n=len(counts), output=step.get('output'),
                         median=statistics.median(counts) if counts else None,
                         spread=(max(counts) - min(counts)) if counts else None))
     return out
@@ -103,6 +105,33 @@ def withdrawal(summary, mass_g, factor):
     passed = sum(1 for r in reps if abs(r['error_g']) <= 2)
     return dict(ok=bool(reps), reps=reps, within_2g=passed, total=len(reps),
                 approved=len(reps) >= 10 and passed >= 9, mass_g=mass_g, factor=factor)
+
+
+def flow(summary, factor, pulse_ms, dose_ml=DOSE_ML):
+    """Vazão por bomba: retirada do reservatório (antes − depois de cada pulso) ÷ tempo do pulso.
+
+    A primeira repetição de cada bomba enche a mangueira (escorva) e fica fora da média.
+    """
+    by_output = {}
+    for i, step in enumerate(summary):
+        if step['load'] != 'pulse' or not step.get('output'):
+            continue
+        before = next((s for s in reversed(summary[:i]) if s['load'] == 'empty'), None)
+        after = next((s for s in summary[i + 1:] if s['load'] == 'empty'), None)
+        reps = by_output.setdefault(step['output'], [])
+        ml = None
+        if before and after and before['median'] is not None and after['median'] is not None:
+            ml = (before['median'] - after['median']) / factor
+        reps.append(dict(step=step['index'], ml=ml, ml_per_s=ml / (pulse_ms / 1000) if ml is not None else None, priming=not reps))
+    pumps = []
+    for output, reps in sorted(by_output.items()):
+        rates = [r['ml_per_s'] for r in reps if not r['priming'] and r['ml_per_s'] is not None]
+        mean = statistics.mean(rates) if rates else None
+        spread = (max(rates) - min(rates)) / mean * 100 if rates and len(rates) > 1 and mean else None
+        valid = bool(mean and mean > 0 and len(rates) >= 2)
+        pumps.append(dict(output=output, reps=reps, ml_per_s=mean, spread_pct=spread, valid=valid,
+                          dose_s=dose_ml / mean if valid else None))
+    return dict(ok=bool(pumps) and all(p['valid'] for p in pumps), pumps=pumps, pulse_ms=pulse_ms, dose_ml=dose_ml, factor=factor)
 
 
 def press(summary, factor):
@@ -187,7 +216,8 @@ def live(minutes: int = 15):
 
 
 class SessionStart(BaseModel):
-    kind: str = Field(pattern='^(calibration|withdrawal|press)$')
+    kind: str = Field(pattern='^(calibration|withdrawal|press|flow)$')
+    pulse_ms: int | None = Field(default=None, ge=1000, le=WET_MAX_MS)
     mass_g: float | None = Field(default=None, gt=0, le=5000)
     factor: float | None = None
     note: str | None = Field(default=None, max_length=300)
@@ -195,7 +225,8 @@ class SessionStart(BaseModel):
 
 class StepMark(BaseModel):
     index: int = Field(ge=0, le=200)
-    load: str = Field(pattern='^(empty|loaded|press)$')
+    load: str = Field(pattern='^(empty|loaded|press|pulse)$')
+    output: int | None = Field(default=None, ge=1, le=3)
     label: str = Field(max_length=120)
     planned_s: int = Field(gt=0, le=1800)
 
@@ -241,7 +272,7 @@ def start(body: SessionStart):
         if old['status'] == 'running':
             old['status'] = 'abandoned'
             store(old)
-    session = dict(id=str(uuid.uuid4()), kind=body.kind, mass_g=body.mass_g, factor=body.factor, note=body.note,
+    session = dict(id=str(uuid.uuid4()), kind=body.kind, mass_g=body.mass_g, factor=body.factor, note=body.note, pulse_ms=body.pulse_ms,
                    device=DEVICE, started_at=iso(now()), status='running', steps=[],
                    trial_eligible=False, purpose='diagnóstico/calibração da bancada; não é dado do ensaio')
     store(session)
@@ -255,7 +286,7 @@ def mark(session_id: str, body: StepMark):
         raise HTTPException(409, 'Sessão encerrada')
     at = now()
     close_open_step(session, at)
-    session['steps'].append(dict(index=body.index, load=body.load, label=body.label, planned_s=body.planned_s, started_at=iso(at)))
+    session['steps'].append(dict(index=body.index, load=body.load, label=body.label, planned_s=body.planned_s, started_at=iso(at), output=body.output))
     store(session)
     return dict(ok=True, started_at=iso(at))
 
@@ -299,11 +330,18 @@ def mqtt_client(tag):
 
 class Pulse(BaseModel):
     output: int = Field(ge=0, le=3)  # 0 = desligar todas
-    duration_ms: int = Field(default=1000, ge=0, le=PULSE_MAX_MS)
+    duration_ms: int = Field(default=1000, ge=0, le=WET_MAX_MS)
+    mode: str = Field(default='dry', pattern='^(dry|wet)$')  # wet = bomba submersa (vazão)
+
+    @model_validator(mode='after')
+    def dry_limit(self):
+        if self.mode == 'dry' and self.duration_ms > PULSE_MAX_MS:
+            raise ValueError('a seco, no máximo 2 s')
+        return self
 
 
 def pulse_message(body, test_id, at):
-    return dict(schema_version=1, test_id=test_id, device_id=DEVICE, output=body.output, duration_ms=body.duration_ms,
+    return dict(schema_version=1, test_id=test_id, device_id=DEVICE, output=body.output, duration_ms=body.duration_ms, mode=body.mode,
                 issued_at=iso(at), expires_at=iso(at + timedelta(seconds=30)))
 
 
@@ -376,6 +414,59 @@ def refill(body: Refill):
     return dict(refill_id=refill_id, published=True)
 
 
+def soil_raw_summary(unit_id, minutes=2):
+    """Mediana do ADC bruto do vaso nos últimos minutos (leituras válidas da placa)."""
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT (payload->>'soil_raw')::int AS raw FROM telemetry
+               WHERE device_id=%s AND source='physical' AND unit_id=%s AND payload->>'soil_raw' IS NOT NULL
+               AND collected_at > now() - make_interval(mins => %s)""", (DEVICE, unit_id, minutes)).fetchall()
+    values = [r['raw'] for r in rows]
+    return dict(n=len(values), median=statistics.median(values) if values else None,
+                spread=(max(values) - min(values)) if values else None)
+
+
+def soil_file():
+    return SOIL / 'calibracao-solo.json'
+
+
+def soil_state():
+    path = soil_file()
+    return json.loads(path.read_text(encoding='utf-8')) if path.exists() else dict(units={}, history=[])
+
+
+class SoilPoint(BaseModel):
+    unit_id: str = Field(pattern='^pot-0[1-3]$')
+    state: str = Field(pattern='^(dry|wet)$')
+    note: str | None = Field(default=None, max_length=300)
+
+
+@app.get('/api/soil')
+def soil_get():
+    state = soil_state()
+    for unit, points in state['units'].items():
+        dry, wet = points.get('dry'), points.get('wet')
+        points['ready'] = bool(dry and wet and abs(dry['median'] - wet['median']) >= 200)
+    return state
+
+
+@app.post('/api/soil')
+def soil_record(body: SoilPoint):
+    """Registra o ponto seco/saturado do vaso pela mediana dos últimos 2 min (não grava a placa)."""
+    summary = soil_raw_summary(body.unit_id)
+    if summary['n'] < 6:
+        raise HTTPException(409, 'Leituras insuficientes nos últimos 2 min (mínimo 6).')
+    if summary['spread'] > 150:
+        raise HTTPException(409, f"Leitura instável (variação de {summary['spread']} no ADC); aguarde estabilizar.")
+    state = soil_state()
+    point = dict(median=summary['median'], n=summary['n'], spread=summary['spread'], at=iso(now()), note=body.note)
+    state['units'].setdefault(body.unit_id, {})[body.state] = point
+    state['history'].append(dict(unit_id=body.unit_id, state=body.state, **point))
+    SOIL.mkdir(parents=True, exist_ok=True)
+    soil_file().write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
+    return point
+
+
 @app.get('/api/sessions/{session_id}/result')
 def result(session_id: str):
     session = load(session_id)
@@ -394,6 +485,8 @@ def result(session_id: str):
         raise HTTPException(409, 'Fator indisponível')
     elif session['kind'] == 'withdrawal':
         analysis = withdrawal(summary, session['mass_g'], factor)
+    elif session['kind'] == 'flow':
+        analysis = flow(summary, factor, session.get('pulse_ms') or 5000)
     else:
         analysis = press(summary, factor)
     temps = [s['temp'] for s in samples if s['temp'] is not None and s['at'] >= datetime.fromisoformat(session['started_at'])]

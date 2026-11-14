@@ -128,5 +128,41 @@ class PulseTests(unittest.TestCase):
         self.assertEqual(datetime.fromisoformat(msg['expires_at']) - datetime.fromisoformat(msg['issued_at']), timedelta(seconds=30))
 
 
+class FlowTests(unittest.TestCase):
+    def test_flow_excludes_priming_and_computes_dose_time(self):
+        steps = []
+        loads = []
+        for output in (1, 2):
+            loads.append(('empty', None))
+            for _ in range(3):
+                loads += [('pulse', output), ('empty', None)]
+        for i, (load, output) in enumerate(loads):
+            start = T0 + timedelta(seconds=i * 40)
+            steps.append(dict(index=i, load=load, label=load, output=output, started_at=start.isoformat(),
+                              ended_at=(start + timedelta(seconds=40)).isoformat()))
+        level = {}
+        mass = 1000.0
+        for step in steps:  # each pulse removes 100 g (priming 140 g); 20 counts/g
+            if step['load'] == 'pulse':
+                prior = sum(1 for s in steps[:step['index']] if s['load'] == 'pulse' and s['output'] == step['output'])
+                mass -= 140 if prior == 0 else 100
+            level[step['index']] = mass
+        data = samples(steps, lambda s: 20 * level[s['index']])
+        result = bench.flow(bench.summarize(steps, data), 20, 5000)
+        self.assertTrue(result['ok'])
+        pump = result['pumps'][0]
+        self.assertAlmostEqual(pump['ml_per_s'], 20, places=3)
+        self.assertTrue(pump['reps'][0]['priming'])
+        self.assertAlmostEqual(pump['dose_s'], 2.5, places=3)
+
+    def test_wet_pulse_limits(self):
+        from pydantic import ValidationError
+        self.assertEqual(bench.Pulse(output=1, duration_ms=5000, mode='wet').duration_ms, 5000)
+        with self.assertRaises(ValidationError):
+            bench.Pulse(output=1, duration_ms=5000)
+        with self.assertRaises(ValidationError):
+            bench.Pulse(output=1, duration_ms=10001, mode='wet')
+
+
 if __name__ == '__main__':
     unittest.main()
