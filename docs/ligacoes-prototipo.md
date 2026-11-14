@@ -254,3 +254,5 @@ Testes na placa (`-3`/`-4`):
 - **Com fonte externa (13/11):** pulsos de 2 s nas 3 bombas (0,39–0,41 A, mínimo de 5,17 V). Houve 3 falhas de leitura, **1 ciclo de energia automático, e a leitura voltou sozinha**, mantendo-se estável nos 90 s seguintes. A recuperação está validada.
 - **Watchdog:** dois reinícios `TASK_WDT` (motivo 6) às 20:51, logo após o religamento da placa. A causa provável (não confirmada por backtrace) é `esp_mqtt_client_publish` esperando a reconexão TLS por até 10 s, com o watchdog em 5 s. Watchdog ajustado para 15 s e timeout de rede MQTT para 8 s, gravados em 13/11. Teste com o broker derrubado e religado 3 vezes seguidas: 3 reconexões, nenhum reinício (uptime contínuo de 223 s) e nenhum aviso de watchdog na serial.
 
+**Decisão do usuário (14/11/2026):** durante o ensaio, o notebook fica **no cabo** (192.168.15.37, reservado). Pelo Wi-Fi ele recebe outro IP (ex.: .21), fora do provisionamento e do certificado, e o ESP32 perde o broker. Materiais para iniciar os testes: comprados pelo usuário.
+
