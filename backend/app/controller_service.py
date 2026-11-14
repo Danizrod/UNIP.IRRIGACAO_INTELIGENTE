@@ -1,4 +1,4 @@
-"""Avaliação automática opcional, exclusivamente para dispositivos simulados."""
+"""Avaliação automática: cada origem (simulação/física) só com seu interruptor explícito."""
 import json
 import logging
 import os
@@ -8,7 +8,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import HTTPException
 from app.contracts import DecisionConfiguration
-from app.control import configuration_key
+from app.control import configuration_key, source_enabled
 from app.ml_api import PredictionRequest, predict
 from app.store import connect, evaluate
 
@@ -28,7 +28,7 @@ def tick_once():
     count = 0
     for row in configurations:
         config = DecisionConfiguration.model_validate(row['payload'])
-        if not config.enabled or config.source != 'simulation':
+        if not config.enabled or not source_enabled(config.source):
             continue
         with connect() as conn:
             reading = conn.execute('SELECT message_id FROM telemetry WHERE device_id=%s AND experiment_id=%s AND source=%s AND unit_id=%s ORDER BY collected_at DESC LIMIT 1',
@@ -50,8 +50,9 @@ def tick_once():
 
 def heartbeat_devices():
     with connect() as conn:
-        rows = conn.execute("SELECT DISTINCT device_id FROM control_configs WHERE (payload->>'enabled')::boolean").fetchall()
-    return [row['device_id'] for row in rows]
+        rows = conn.execute("SELECT DISTINCT device_id, payload->>'source' AS source FROM control_configs WHERE (payload->>'enabled')::boolean").fetchall()
+    # Without the switch for its source, no heartbeat: the board keeps its local fallback.
+    return sorted({row['device_id'] for row in rows if source_enabled(row['source'])})
 
 
 def publish_heartbeats(client, devices):

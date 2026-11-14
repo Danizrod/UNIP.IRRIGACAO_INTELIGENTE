@@ -181,6 +181,7 @@ class DecisionConfiguration(StrictContract):
     schedule_interval_s: int | None = Field(default=None, gt=0)
     prediction_fallback_enabled: bool = False
     stabilization_s: float = Field(default=0,ge=0,le=3600)
+    max_daily_volume_ml: float | None = Field(default=None, gt=0, description='Teto por vaso em 24 h (protocolo: 300 mL)')
     model_path: str | None = None
 
     @model_validator(mode='after')

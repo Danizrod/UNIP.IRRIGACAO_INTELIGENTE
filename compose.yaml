@@ -39,6 +39,8 @@ services:
       DATABASE_URL: postgresql://irrigation_app:${APP_DATABASE_PASSWORD:?execute bootstrap}@postgres:5432/irrigation
       AUTO_MIGRATE: 'false'
       SIMULATION_CONTROL_ENABLED: 'true'
+      # Physical pumps: off unless PHYSICAL_CONTROL_ENABLED=true in .env (after flow/soil calibration).
+      PHYSICAL_CONTROL_ENABLED: ${PHYSICAL_CONTROL_ENABLED:-false}
       MODEL_PATH: /models/active.json
       API_TOKEN: ${API_TOKEN:?execute bootstrap}
       MQTT_BACKEND_PASSWORD: ${MQTT_BACKEND_PASSWORD}

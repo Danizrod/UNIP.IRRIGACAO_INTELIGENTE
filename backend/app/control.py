@@ -1,14 +1,24 @@
 """Pure deterministic policy; no electrical/calibration defaults."""
+import os
 from datetime import datetime, timedelta
 from app.contracts import DecisionConfiguration, Prediction, Telemetry
 
 
+def source_enabled(source):
+    """Each source needs its own explicit switch; physical actuation is off unless enabled."""
+    if source == 'physical':
+        return os.environ.get('PHYSICAL_CONTROL_ENABLED') == 'true'
+    return os.environ.get('SIMULATION_CONTROL_ENABLED') == 'true'
+
+
 def decide(config: DecisionConfiguration, telemetry: Telemetry | None, now: datetime,
            last_cycle_at: datetime | None = None, prediction: Prediction | None = None,
-           active_command: bool = False, simulation_enabled: bool = False, hysteresis_latched: bool = False):
-    if config.source == 'physical':
-        return False, 'physical_actuation_disabled'
-    if not simulation_enabled or not config.enabled:
+           active_command: bool = False, simulation_enabled: bool = False, hysteresis_latched: bool = False,
+           daily_volume_ml: float = 0):
+    # `simulation_enabled` = control enabled for config.source (see source_enabled).
+    if not simulation_enabled:
+        return False, 'physical_actuation_disabled' if config.source == 'physical' else 'control_disabled'
+    if not config.enabled:
         return False, 'control_disabled'
     if active_command:
         return False, 'active_command'
@@ -27,6 +37,8 @@ def decide(config: DecisionConfiguration, telemetry: Telemetry | None, now: date
         return False, 'insufficient_or_unknown_reservoir'
     if last_cycle_at and now < last_cycle_at + timedelta(seconds=config.cooldown_s):
         return False, 'cooldown'
+    if config.max_daily_volume_ml is not None and daily_volume_ml + config.target_volume_ml > config.max_daily_volume_ml:
+        return False, 'daily_volume_cap'
     if telemetry.soil_index >= config.soil_high:
         return False, 'soil_at_or_above_high'
     if config.treatment == 'T1':

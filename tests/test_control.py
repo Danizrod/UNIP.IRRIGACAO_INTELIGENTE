@@ -18,7 +18,25 @@ class ControlTests(unittest.TestCase):
     def test_safe_default_and_physical_disabled(self):
         self.assertEqual(decide(self.config,self.telemetry,self.now)[1], 'control_disabled')
         self.config.source='physical'
-        self.assertEqual(self.run_policy()[1], 'physical_actuation_disabled')
+        self.assertEqual(decide(self.config,self.telemetry,self.now)[1], 'physical_actuation_disabled')
+
+    def test_physical_switch_and_daily_cap(self):
+        import os
+        from unittest.mock import patch
+        from app.control import source_enabled
+        with patch.dict(os.environ,{'SIMULATION_CONTROL_ENABLED':'true'},clear=False):
+            os.environ.pop('PHYSICAL_CONTROL_ENABLED',None)
+            self.assertFalse(source_enabled('physical'))
+            self.assertTrue(source_enabled('simulation'))
+        with patch.dict(os.environ,{'PHYSICAL_CONTROL_ENABLED':'true'}):
+            self.assertTrue(source_enabled('physical'))
+        # Physical decisions follow the same policy once enabled; absolute mass is not required.
+        self.config.source=self.telemetry.source='physical'
+        self.telemetry.reservoir_mass_g=None
+        self.assertEqual(self.run_policy(),(True,'soil_below_low'))
+        self.config.max_daily_volume_ml=300
+        self.assertTrue(self.run_policy(daily_volume_ml=290)[0])
+        self.assertEqual(self.run_policy(daily_volume_ml=291)[1],'daily_volume_cap')
 
     def test_low_and_hold(self):
         self.assertTrue(self.run_policy()[0])

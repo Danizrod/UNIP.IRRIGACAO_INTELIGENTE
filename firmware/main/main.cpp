@@ -25,23 +25,28 @@
 #include <cctype>
 #include <atomic>
 #include <cstddef>
-#if CONFIG_IRRIGATION_PHYSICAL_ENABLED
-#error "Physical actuation unavailable: validate hardware and implement reviewed drivers first"
-#endif
 
 using namespace irrigation;
 static constexpr const char* TAG="irrigation";
-// No GPIO driver exists until actual components and calibration are reviewed.
-struct DisabledPump:ChannelDriver{
+// Physical cycles (14/11/2026): unit -> provisioned output (out1..3); an esp_timer cuts the GPIO at the
+// unit's calibrated dose time (dose1..3 ms, from the wet flow test). The controller's own off (whole
+// seconds) is the backup. Nothing actuates unless `irrigation=1` and every calibration is provisioned.
+[[maybe_unused]] static bool cycle_on(size_t unit);
+[[maybe_unused]] static void cycle_off();
+struct BenchPump:ChannelDriver{
  int channel=-1;
- void off_all()override{channel=-1;}
+ void off_all()override{
+#if !CONFIG_IRRIGATION_SIMULATION
+  cycle_off();
+#endif
+  channel=-1;}
  bool on(size_t index)override{
-#if CONFIG_IRRIGATION_SIMULATION
   if(channel>=0)return false;
+#if CONFIG_IRRIGATION_SIMULATION
   channel=static_cast<int>(index);return true;
 #else
-  (void)index;
-  return false;
+  if(!cycle_on(index))return false;
+  channel=static_cast<int>(index);return true;
 #endif
  }
 } pump;
@@ -110,6 +115,12 @@ static std::array<int64_t,3> manual_last_end_ms{},manual_window_start_ms{},manua
 static esp_timer_handle_t manual_timer=nullptr;
 static void all_outputs_low(){for(int pin:bench::output_pins)gpio_set_level(static_cast<gpio_num_t>(pin),0);}
 static void manual_timeout(void*){all_outputs_low();manual_timer_fired=true;} // esp_timer task: GPIO only
+// Automatic cycle state (see BenchPump).
+static bool irrigation_enabled=false;
+static std::array<int64_t,3> dose_ms{{0,0,0}};
+static esp_timer_handle_t cycle_timer=nullptr;
+static int cycle_unit=-1;static int64_t cycle_started_ms=0;static double cycle_last_on_s=NAN;
+[[maybe_unused]] static void cycle_timeout(void*){all_outputs_low();}
 static SharedRig* controller=nullptr;
 static esp_mqtt_client_handle_t mqtt=nullptr;
 static std::string device,broker,username,password,ca,ssid,wifi_password,ntp,experiment;
@@ -132,13 +143,14 @@ static void dequeue(){if(auto f=outbox.front()){outbox_bytes-=std::min(outbox_by
 static DurableBuffer* durable_events=nullptr;
 static std::array<Sensors,3> sensors; // Invalid by default; no fabricated physical measurements.
 // Physical acquisition settings from `provision`; absent calibration => null values, never defaults.
-static constexpr const char* firmware_version="physical-telemetry-4";
+static constexpr const char* firmware_version="physical-irrigation-1";
 static constexpr double mass_stable_span_g=5; // Provisional: ~1 g noise observed on 04/11.
 static ScaleCalibration scale_calibration;
 static std::array<RelativeSoilCalibration,3> soil_calibration;
 static std::array<int,3> ina_channel{{-1,-1,-1}}; // Unit -> INA3221 channel; unknown until verified.
-static std::array<int,3> unit_output{{-1,-1,-1}};  // Unit -> pump output (0..2 = GPIO25/26/27); not yet used to actuate.
+static std::array<int,3> unit_output{{-1,-1,-1}};  // Unit -> pump output (0..2 = GPIO25/26/27).
 static int64_t telemetry_period_s=60;
+static double dose_volume_ml=NAN,soil_low=NAN,soil_high=NAN,unit_interval_s=NAN;
 [[maybe_unused]] static double shared_removed_ml=0;
 static bool connected=false;
 static bool subscribed=false;
@@ -314,6 +326,32 @@ static void manual_request(cJSON* j){
  gpio_set_level(static_cast<gpio_num_t>(bench::output_pins[i]),1);
  ESP_LOGW(TAG,"Manual pulse: output %d (GPIO%d) for %d ms",output,bench::output_pins[i],static_cast<int>(duration));
 }
+static bool cycle_on(size_t unit){
+#if CONFIG_IRRIGATION_SIMULATION
+ (void)unit;return false;
+#else
+ if(!irrigation_enabled||unit>=3||unit_output[unit]<0||dose_ms[unit]<=0||!cycle_timer||manual_output.load()>=0||cycle_unit>=0)return false;
+ all_outputs_low();hardware::take_peaks();hardware::power_fast(true);hardware::pumps_active(true);
+ if(esp_timer_start_once(cycle_timer,static_cast<uint64_t>(dose_ms[unit])*1000)!=ESP_OK){hardware::power_fast(false);hardware::pumps_active(false);return false;}
+ cycle_unit=static_cast<int>(unit);cycle_started_ms=esp_timer_get_time()/1000;cycle_last_on_s=NAN;
+ gpio_set_level(static_cast<gpio_num_t>(bench::output_pins[unit_output[unit]]),1);
+ ESP_LOGW(TAG,"Cycle: %s output %d (GPIO%d) for %lld ms",units[unit].unit_id.c_str(),unit_output[unit]+1,bench::output_pins[unit_output[unit]],static_cast<long long>(dose_ms[unit]));
+ return true;
+#endif
+}
+static void cycle_off(){
+#if !CONFIG_IRRIGATION_SIMULATION
+ if(cycle_unit<0)return; // never touch a manual pulse's output
+ all_outputs_low();if(cycle_timer)esp_timer_stop(cycle_timer);
+ int64_t on=esp_timer_get_time()/1000-cycle_started_ms;
+ // The timer already cut the GPIO at the dose time; the controller's off arrives up to 1 s later.
+ cycle_last_on_s=std::min(on,dose_ms[cycle_unit])/1000.0;
+ hardware::power_fast(false);hardware::pumps_active(false);auto peaks=hardware::take_peaks();
+ int ch=ina_channel[cycle_unit];
+ ESP_LOGI(TAG,"Cycle %s off: %.2f s, peak %.3f A",units[cycle_unit].unit_id.c_str(),cycle_last_on_s,ch>=0?peaks.peak_current_a[ch]:NAN);
+ cycle_unit=-1;
+#endif
+}
 static void mqtt_event(void*,esp_event_base_t,int32_t id,void*data){
  xSemaphoreTake(mutex,portMAX_DELAY);
  auto e=static_cast<esp_mqtt_event_handle_t>(data);
@@ -384,7 +422,11 @@ static bool persist_event(size_t channel,const Event&e){
   // Water = scale difference around this dose only; pump energy not integrated yet (null).
   cJSON_AddBoolToObject(j,"measurements_valid",e.withdrawn_ml.has_value());
   if(e.withdrawn_ml)cJSON_AddNumberToObject(j,"volume_ml",*e.withdrawn_ml);
-  if(e.duration_s)cJSON_AddNumberToObject(j,"duration_s",*e.duration_s);
+  if(e.duration_s){double dosed=*e.duration_s;
+#if !CONFIG_IRRIGATION_SIMULATION
+   if(std::isfinite(cycle_last_on_s)){dosed=cycle_last_on_s;cycle_last_on_s=NAN;} // pump on-time, not whole seconds
+#endif
+   cJSON_AddNumberToObject(j,"duration_s",dosed);}
   cJSON_AddStringToObject(j,"occurred_at",stamp.c_str());cJSON_AddStringToObject(j,"status",e.status.c_str());cJSON_AddStringToObject(j,"reason",e.reason.c_str());
   char*s=cJSON_PrintUnformatted(j);bool saved=s&&durable_events->push_cycle(s,e.status);if(s)free(s);cJSON_Delete(j);
   return saved;
@@ -428,18 +470,34 @@ extern "C" void app_main(){
    if(output==1||output==2||output==3)unit_output[i]=static_cast<int>(output)-1;
   }
   manual_enabled=get(settings,"pump_test")=="1";
+  irrigation_enabled=get(settings,"irrigation")=="1";
+  for(size_t i=0;i<3;++i){double ms=parse_number(get(settings,("dose"+std::to_string(i+1)).c_str()));dose_ms[i]=std::isfinite(ms)&&ms>=300&&ms<=10000?static_cast<int64_t>(ms):0;}
+  dose_volume_ml=parse_number(get(settings,"dose_ml"));soil_low=parse_number(get(settings,"soil_low"));soil_high=parse_number(get(settings,"soil_high"));
+  unit_interval_s=parse_number(get(settings,"interval_s"));
   double period=parse_number(get(settings,"telemetry_s"));
   if(period>=10&&period<=900)telemetry_period_s=static_cast<int64_t>(period);
   nvs_close(settings);
  }
  if(units[0].unit_id.empty()||units[1].unit_id.empty()||units[2].unit_id.empty()||units[0].unit_id==units[1].unit_id||units[0].unit_id==units[2].unit_id||units[1].unit_id==units[2].unit_id){ESP_LOGE(TAG,"Configure three distinct units; locked off");return;}
- Limits limits{};
+ std::array<Limits,3> limits{};
+#if !CONFIG_IRRIGATION_SIMULATION
+ // Physical limits only from provisioning (protocol: 50 mL dose, 45 min per pot, <=10 s). The controller
+ // duration is the dose time + 1 s so its whole-second off never cuts the timed dose short.
+ {bool ok=irrigation_enabled&&std::isfinite(dose_volume_ml)&&dose_volume_ml>0&&dose_volume_ml<=80&&std::isfinite(soil_low)&&std::isfinite(soil_high)&&soil_low>=0&&soil_high<=100&&soil_low<soil_high
+          &&std::isfinite(unit_interval_s)&&unit_interval_s>=600&&scale_calibration.valid();
+  for(size_t i=0;i<3;++i){bool unit_ok=ok&&dose_ms[i]>0&&unit_output[i]>=0&&!soil_calibration[i].id.empty();
+   limits[i]=Limits{unit_ok,dose_volume_ml,dose_ms[i]/1000.0+1,soil_low,soil_high,static_cast<int64_t>(unit_interval_s),30,0};}
+  ESP_LOGW(TAG,"Automatic irrigation %s",limits[0].calibrated&&limits[1].calibrated&&limits[2].calibrated?"ENABLED":"locked (irrigation/dose/soil/scale not provisioned)");}
+#endif
 #if CONFIG_IRRIGATION_SIMULATION
  // Explicit synthetic fixture limits, never physical calibration.
  if(device.rfind("sim-",0)!=0||experiment.rfind("sim-",0)!=0){ESP_LOGE(TAG,"Simulation requires sim- identities");return;}
- limits=Limits{true,50,10,30,60,20,5};
-#endif
+ limits.fill(Limits{true,50,10,30,60,20,5});
  static SharedRig core(units,limits,journal,pump,uuid,persist_event,20,2);controller=&core;
+#else
+ // Shared reservoir: 60 s between any two pumps; 15 s for the water/scale to settle before weighing.
+ static SharedRig core(units,limits,journal,pump,uuid,persist_event,60,15);controller=&core;
+#endif
 #if CONFIG_IRRIGATION_SIMULATION
  core.set_reservoir(1000,0); // Synthetic reservoir; physical water stays unknown until a registered refill.
 #else
@@ -447,8 +505,9 @@ extern "C" void app_main(){
  core.restore_reservoir(reservoir_state.known?std::optional<double>(reservoir_state.ml):std::nullopt,reservoir_state.reserve_ml,save_reservoir);
 #endif
 #if !CONFIG_IRRIGATION_SIMULATION
- hardware::start(); // Sensors only; `limits` stays uncalibrated so no command can actuate.
+ hardware::start();
  {esp_timer_create_args_t args={};args.callback=manual_timeout;args.name="manual_off";if(esp_timer_create(&args,&manual_timer)!=ESP_OK)manual_timer=nullptr;}
+ {esp_timer_create_args_t args={};args.callback=cycle_timeout;args.name="cycle_off";if(esp_timer_create(&args,&cycle_timer)!=ESP_OK)cycle_timer=nullptr;}
 #endif
  if(!device.empty()&&broker.rfind("mqtts://",0)==0&&!username.empty()&&!password.empty()&&!ca.empty()&&!ssid.empty()&&!ntp.empty()){
   ESP_ERROR_CHECK(esp_netif_init());ESP_ERROR_CHECK(esp_event_loop_create_default());esp_netif_create_default_wifi_sta();wifi_init_config_t init=WIFI_INIT_CONFIG_DEFAULT();ESP_ERROR_CHECK(esp_wifi_init(&init));
@@ -500,6 +559,7 @@ extern "C" void app_main(){
   if(manual_output.load()>=0){int64_t now_ms=esp_timer_get_time()/1000;
    if(manual_timer_fired.load())manual_finish("done","duration_elapsed");
    else if(now_ms-manual_started_ms>manual_pulse_ms+300)manual_finish("failed","timer_overrun_forced_off");}
+  if(cycle_unit>=0&&esp_timer_get_time()/1000-cycle_started_ms>dose_ms[cycle_unit]+300)all_outputs_low(); // timer backup
 #endif
   {int64_t now_ms=esp_timer_get_time()/1000;
    if(connected)mqtt_down_since_ms=now_ms;

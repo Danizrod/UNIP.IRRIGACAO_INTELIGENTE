@@ -52,6 +52,16 @@ Identificação visual dos três bornes concluída pelo usuário em 01/11/2026: 
 
 `diagnostics/hx711_drift/hx711_drift.ino`: sketch Arduino separado, sem Wi-Fi, DHT, INA ou alternância de saídas (GPIO25/26/27 em LOW). Lê o fator da EEPROM (512 bytes, endereço 0) sem gravar; sem tara no boot, média extra, zona morta ou autozero. Estabiliza 3 s por diferença de tempo com `update()` contínuo; `TARA` pela serial faz uma tara não bloqueante com prazo. Saída CSV a cada 1 s com uptime, estado, idade da amostra, amostras no intervalo, contagens e gramas da média móvel da biblioteca (não ADC bruto), offset e timeout. Biblioteca HX711_ADC 1.2.12 (config padrão, 16 amostras), instalada em `.local/`. Registro: `tools/hx711_serial_log.py --port COM5 --output data/raw/<novo>.log` (uma `TARA` após 180 s). Gravar só em app0 com backup verificado e restaurar o app0 do backup ao terminar.
 
+## Rega automática física (14/11/2026, `physical-irrigation-1`)
+
+Implementada e **travada** até o provisionamento. `irrigation=1` exige `dose1..3` (ms por vaso, do teste de vazão, 300–10000), `dose_ml`, `soil_low`/`soil_high`, `interval_s` (≥ 600), `soil_cal` com `dry1..3`/`wet1..3`, `out1..3` e balança calibrada. Sem isso, o boot registra "Automatic irrigation locked".
+- Cada vaso tem limites próprios (`SharedRig` com `std::array<Limits,3>`). Um esp_timer desliga o GPIO exatamente no tempo de dose. O desligamento do controlador vem em segundos inteiros (dose + 1 s) e serve de reserva. A guarda do laço principal força LOW após dose + 300 ms.
+- O evento informa `duration_s` = tempo real ligado.
+- Há 60 s entre bombas e 15 s de estabilização antes da pesagem. Pulso manual e ciclo se excluem.
+- Sem heartbeat do backend, a placa usa a histerese local (`soil_low`/`soil_high`) nos três vasos.
+
+O backend só decide para a origem física com `PHYSICAL_CONTROL_ENABLED=true` (padrão `false` no compose). Sem esse interruptor, não envia heartbeat para a placa física. O teto diário por vaso é `max_daily_volume_ml` da configuração.
+
 ## Telemetria física (05/11/2026)
 
 Uma mensagem por vaso a cada `telemetry_s` (padrão 60 s) após UTC/SNTP: ADC bruto do solo, índice apenas se `soil_cal`/`dryN`/`wetN` existirem, DHT22, massa da balança (contagens HX711 + `scale_cal`/`scale_offset`/`scale_factor`, sinal preservado), `scale_span_g` e `mass_stable` (amplitude da janela ≤ 5 g, provisório) e INA3221 só para vasos com `inaN` mapeado. Leituras comuns (balança, DHT) repetem-se em cada vaso e não são medições independentes. Sem calibração: valores null, nunca padrões. Associação vaso↔sensor provisória: unidade 1/2/3 = GPIO32/33/34 (sensores B/A/C). `limits` permanece não calibrado, então nenhum comando aciona saída.

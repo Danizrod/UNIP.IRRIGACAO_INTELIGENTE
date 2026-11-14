@@ -1,6 +1,6 @@
 # Ambiente local
 
-Software verificado em simulação em 12/10/2026. Atuação física bloqueada até montagem e calibração.
+Software verificado em simulação em 12/10/2026. A rega física foi implementada em 14/11/2026 e continua travada até o provisionamento (`irrigation=1` com doses e calibração do solo) e até `PHYSICAL_CONTROL_ENABLED=true` no `.env`. Ver [firmware](../firmware/README.md#rega-automática-física-14112026-physical-irrigation-1).
 
 ## Preparar e executar
 

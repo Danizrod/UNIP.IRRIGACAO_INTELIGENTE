@@ -2,6 +2,7 @@
 #include <cassert>
 #include <set>
 #include <tuple>
+#include <algorithm>
 using namespace irrigation;
 struct JournalMock:Journal {
  std::set<std::string> ids;int64_t floor=0,last=0;
@@ -75,4 +76,20 @@ int main(){
  assert(e2.size()&&*r3.reservoir()==662&&*saved.back().first==662);
  storage_ok=false;assert(!r3.set_reservoir(900,200));assert(!r3.reservoir());
  at(2040,-338,true);r3.tick(sensors,2040);assert(!r3.submit(1,{"unsaved",2040,2050,20,5},sensors[1],2040));
+ // Per-unit limits (physical pumps differ in flow): each unit only accepts its own dose time;
+ // an uncalibrated unit never actuates while the others still can.
+ JournalMock j4;DriverMock d4;std::vector<std::pair<size_t,Event>> e4;
+ std::array<Limits,3> per{{Limits{true,50,2.6,30,60,20,5},Limits{true,50,3.4,30,60,20,5},Limits{false,50,3,30,60,20,5}}};
+ SharedRig r4(units,per,j4,d4,[&](){return "l4-"+std::to_string(++ids);},[&](size_t u,const Event&e){e4.push_back({u,e});return true;},20,2);
+ assert(r4.set_reservoir(1000,200));at(3000,0,true);r4.connectivity(true);r4.tick(sensors,3000);at(3002,0,true);r4.tick(sensors,3002);assert(r4.synchronize(3002));
+ assert(!r4.submit(0,{"too-long",3002,3020,50,3},sensors[0],3002));assert(e4.back().second.reason=="limits");
+ assert(!r4.submit(2,{"uncalibrated",3002,3020,50,1},sensors[2],3002));assert(e4.back().second.reason=="invalid_sensors_or_calibration");
+ assert(r4.submit(1,{"unit-1-own-time",3002,3020,50,3},sensors[1],3002)&&d4.active==1);
+ // Local fallback (backend offline): the uncalibrated unit stays off.
+ JournalMock j5;DriverMock d5;
+ SharedRig r5(units,per,j5,d5,[&](){return "l5-"+std::to_string(++ids);},[&](size_t,const Event&){return true;},20,2);
+ assert(r5.set_reservoir(1000,200));
+ for(auto&s:sensors){s={true,10,0,0,4000,true,0};}r5.tick(sensors,4000);
+ for(int64_t t=4002;t<4400;t+=1){for(auto&s:sensors){s={true,10,0,0,t,true,0};}r5.tick(sensors,t);assert(d5.active!=2);}
+ assert(std::count(d5.order.begin(),d5.order.end(),0)&&std::count(d5.order.begin(),d5.order.end(),1)&&!std::count(d5.order.begin(),d5.order.end(),2));
 }

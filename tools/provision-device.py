@@ -15,8 +15,9 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 KEYS = {'device','experiment','unit','broker','username','password','ca','ssid','wifi_password','ntp'}
 # Optional physical acquisition settings; absent => firmware publishes null, never a default.
-NUMERIC = {'scale_offset','scale_factor','dry1','wet1','dry2','wet2','dry3','wet3','telemetry_s'}
-OPTIONAL = NUMERIC | {'scale_cal','soil_cal','ina1','ina2','ina3','out1','out2','out3','pump_test'}
+NUMERIC = {'scale_offset','scale_factor','dry1','wet1','dry2','wet2','dry3','wet3','telemetry_s',
+           'dose1','dose2','dose3','dose_ml','soil_low','soil_high','interval_s'}
+OPTIONAL = NUMERIC | {'scale_cal','soil_cal','ina1','ina2','ina3','out1','out2','out3','pump_test','irrigation'}
 
 
 def private_path(path):
@@ -104,6 +105,22 @@ def validate(settings, mode):
     outs=[settings.get(f'out{i}') for i in (1,2,3)]
     if any(outs) and (None in outs or sorted(outs)!=['1','2','3']):
         raise ValueError('out1..out3 devem mapear os três vasos para saídas 1, 2 e 3 distintas')
+    # Automatic irrigation (physical): '1' only with every calibration the firmware needs.
+    if settings.get('irrigation','0') not in ('0','1'):
+        raise ValueError('irrigation deve ser "0" ou "1"')
+    for key in ('dose1','dose2','dose3'):
+        if key in settings and not 300<=float(settings[key])<=10000:
+            raise ValueError('dose1..dose3 (ms) devem ficar entre 300 e 10000')
+    if 'dose_ml' in settings and not 0<float(settings['dose_ml'])<=80:
+        raise ValueError('dose_ml deve ficar entre 0 e 80')
+    if 'interval_s' in settings and float(settings['interval_s'])<600:
+        raise ValueError('interval_s deve ser >= 600')
+    if ('soil_low' in settings)!=('soil_high' in settings) or ('soil_low' in settings and not 0<=float(settings['soil_low'])<float(settings['soil_high'])<=100):
+        raise ValueError('soil_low/soil_high exigem 0 <= low < high <= 100')
+    if settings.get('irrigation')=='1':
+        needed={'dose1','dose2','dose3','dose_ml','soil_low','soil_high','interval_s','soil_cal','dry1','wet1','dry2','wet2','dry3','wet3','out1','scale_cal','scale_factor','scale_offset'}
+        if not needed<=settings.keys():
+            raise ValueError('irrigation=1 exige '+', '.join(sorted(needed-settings.keys())))
     for key in ('scale_cal','soil_cal'):
         if key in settings and not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,47}',settings[key]):
             raise ValueError('Identificação de calibração inválida')

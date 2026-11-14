@@ -52,9 +52,15 @@ class SharedRig {
 public:
  SharedRig(std::array<UnitIdentity,3> units,Limits limits,Journal&j,ChannelDriver&d,
            std::function<std::string()> uuid,std::function<bool(size_t,const Event&)> emit,
+           int64_t global_interval_s,int64_t stabilization_s)
+  :SharedRig(std::move(units),std::array<Limits,3>{{limits,limits,limits}},j,d,std::move(uuid),std::move(emit),global_interval_s,stabilization_s){}
+ // Per-unit limits: each pump has its own calibrated flow, so its own dose time.
+ SharedRig(std::array<UnitIdentity,3> units,std::array<Limits,3> limits,Journal&j,ChannelDriver&d,
+           std::function<std::string()> uuid,std::function<bool(size_t,const Event&)> emit,
            int64_t global_interval_s,int64_t stabilization_s):driver(d),journal(j),identities(std::move(units)),sink(std::move(emit)),interval_s(global_interval_s),settle_s(stabilization_s){
-  driver.off_all();last_end=journal.last_cycle_at();limits.settle_s=stabilization_s;max_dose_ml=limits.volume_ml;
-  for(size_t i=0;i<3;++i){channels[i]=std::make_unique<Channel>(*this,i);controls[i]=std::make_unique<Controller>(limits,journal,*channels[i],uuid,[this,i](const Event&e){account(i,e);return sink(i,e);});}
+  driver.off_all();last_end=journal.last_cycle_at();
+  for(auto&l:limits){l.settle_s=stabilization_s;max_dose_ml=std::max(max_dose_ml,l.volume_ml);}
+  for(size_t i=0;i<3;++i){channels[i]=std::make_unique<Channel>(*this,i);controls[i]=std::make_unique<Controller>(limits[i],journal,*channels[i],uuid,[this,i](const Event&e){account(i,e);return sink(i,e);});}
  }
  const UnitIdentity& identity(size_t i)const{return identities.at(i);}
  int active()const{return active_channel;}

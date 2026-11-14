@@ -52,8 +52,9 @@ def migrate():
 
 def save_command(item):
     from datetime import datetime, timezone
-    if item.source != 'simulation' or os.environ.get('SIMULATION_CONTROL_ENABLED') != 'true':
-        raise ValueError('Atuação física bloqueada; habilite explicitamente simulação')
+    from app.control import source_enabled
+    if not source_enabled(item.source):
+        raise ValueError('Atuação bloqueada para esta origem; habilite explicitamente')
     payload = item.model_dump(mode='json')
     with connect() as conn:
         conn.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', (item.device_id,))
@@ -80,8 +81,8 @@ def save_command(item):
         telemetry = Telemetry.model_validate(tr['payload']) if tr else None
         # Manual simulation commands still obey sensor/reservoir/calibration/cooldown guards.
         last = conn.execute("SELECT issued_at FROM commands WHERE device_id=%s AND payload->>'experiment_id'=%s AND payload->>'unit_id'=%s AND status NOT IN ('rejected','expired') ORDER BY issued_at DESC LIMIT 1", (item.device_id,item.experiment_id,item.unit_id)).fetchone()
-        allowed, reason = decide(cfg,telemetry,now,last['issued_at'] if last else None,simulation_enabled=True)
-        if reason in ('control_disabled','missing_telemetry','telemetry_context_mismatch','stale_telemetry','invalid_or_uncalibrated_sensor','insufficient_or_unknown_reservoir','cooldown','soil_at_or_above_high'):
+        allowed, reason = decide(cfg,telemetry,now,last['issued_at'] if last else None,simulation_enabled=True,daily_volume_ml=daily_volume(conn,cfg,now))
+        if reason in ('control_disabled','daily_volume_cap','missing_telemetry','telemetry_context_mismatch','stale_telemetry','invalid_or_uncalibrated_sensor','insufficient_or_unknown_reservoir','cooldown','soil_at_or_above_high'):
             raise ValueError(reason)
         conn.execute('INSERT INTO commands(command_id,device_id,source,issued_at,expires_at,payload) VALUES(%s,%s,%s,%s,%s,%s)', (item.command_id,item.device_id,item.source,item.issued_at,item.expires_at,Jsonb(payload)))
         conn.execute('INSERT INTO command_outbox(command_id) VALUES(%s)', (item.command_id,))
@@ -128,8 +129,7 @@ def save_event(item):
 
 def save_local_event(item):
     """Ledger auditado de ciclos autônomos; não cria outbox/comando remoto."""
-    if item.source != 'simulation':
-        raise ValueError('Ciclos físicos ainda não habilitados')
+    # Local cycles are the board's own fallback: always recorded (they happened), never commanded here.
     payload = item.model_dump(mode='json')
     with connect() as conn:
         conn.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', (str(item.command_id),))
@@ -187,7 +187,8 @@ def evaluate(device_id, request_id, unit_id=None, experiment_id=None):
         # Stale data cannot change state; valid high readings release the latch even during cooldown.
         fresh = telemetry is not None and 0 <= (now-telemetry.collected_at).total_seconds() <= config.max_telemetry_age_s
         latch = hysteresis_state(config,telemetry,prior_latch) if fresh else prior_latch
-        act, reason = decide(config,telemetry,now,previous['issued_at'] if previous else None,prediction,bool(active),os.environ.get('SIMULATION_CONTROL_ENABLED') == 'true', latch)
+        from app.control import source_enabled
+        act, reason = decide(config,telemetry,now,previous['issued_at'] if previous else None,prediction,bool(active),source_enabled(config.source), latch, daily_volume(conn,config,now))
         if act and config.treatment == 'T3' and reason == 'prediction_below_low':
             latch = True  # anticipated start keeps dosing (interval permitting) until observed >= soil_high
         result = {'request_id': str(request_id), 'device_id':device_id, 'experiment_id':config.experiment_id,'unit_id':config.unit_id, 'reason':reason, 'actuate':act, 'telemetry_message_id':str(telemetry.message_id) if telemetry else None, 'prediction_id':str(prediction.prediction_id) if prediction else None, 'command_id':None, 'configuration_key':config_key, 'hysteresis_latched':latch}
@@ -198,6 +199,21 @@ def evaluate(device_id, request_id, unit_id=None, experiment_id=None):
             result['command_id'] = str(command.command_id)
         conn.execute('INSERT INTO decisions(request_id,device_id,payload) VALUES(%s,%s,%s)', (request_id,device_id,Jsonb(result)))
         return result
+
+
+def daily_volume(conn, config, now):
+    """Água planejada no vaso nas últimas 24 h: doses remotas não recusadas/vencidas + ciclos locais iniciados.
+
+    Conta a dose comandada (não a medida): falta de medição não pode liberar mais água.
+    """
+    row=conn.execute("""SELECT coalesce(sum((payload->>'target_volume_ml')::float),0) AS ml FROM commands
+        WHERE device_id=%s AND payload->>'experiment_id'=%s AND payload->>'unit_id'=%s
+        AND status NOT IN ('rejected','expired') AND issued_at > %s - interval '24 hours'""",
+        (config.device_id,config.experiment_id,config.unit_id,now)).fetchone()
+    local=conn.execute("""SELECT count(DISTINCT command_id) AS n FROM local_cycle_events
+        WHERE device_id=%s AND payload->>'unit_id'=%s AND status='started' AND occurred_at > %s - interval '24 hours'""",
+        (config.device_id,config.unit_id,now)).fetchone()
+    return float(row['ml'])+local['n']*config.target_volume_ml
 
 
 def resolve_configuration(conn, device_id, unit_id=None, experiment_id=None):
@@ -231,8 +247,9 @@ def revalidate_queued(conn, command, now):
     from app.contracts import DecisionConfiguration, Prediction
     from app.control import decide
     cfg=resolve_configuration(conn,command['device_id'],command['unit_id'],command['experiment_id'])
-    if command['source'] != 'simulation' or os.environ.get('SIMULATION_CONTROL_ENABLED')!='true':
-        return 'physical_actuation_disabled'
+    from app.control import source_enabled
+    if not source_enabled(command['source']):
+        return 'physical_actuation_disabled' if command['source']=='physical' else 'control_disabled'
     if command['max_duration_s']>cfg.max_duration_s or command['target_volume_ml']>cfg.target_volume_ml:
         return 'configuration_limits_changed'
     row=conn.execute('SELECT payload FROM telemetry WHERE device_id=%s AND experiment_id=%s AND unit_id=%s AND source=%s ORDER BY collected_at DESC LIMIT 1',(cfg.device_id,cfg.experiment_id,cfg.unit_id,cfg.source)).fetchone()
@@ -249,9 +266,9 @@ def revalidate_queued(conn, command, now):
         if command.get('model_version') and (not prediction or prediction.model_version != command['model_version']):
             return 'model_changed_after_decision'
     latch=bool(decision and decision['payload'].get('hysteresis_latched'))
-    allowed,reason=decide(cfg,reading,now,previous['issued_at'] if previous else None,prediction,False,True,latch)
+    allowed,reason=decide(cfg,reading,now,previous['issued_at'] if previous else None,prediction,False,True,latch,daily_volume(conn,cfg,now)-cfg.target_volume_ml)
     # Manual commands retain legacy policy override but never override safety guards.
-    safety={'control_disabled','missing_telemetry','telemetry_context_mismatch','stale_telemetry','invalid_or_uncalibrated_sensor','insufficient_or_unknown_reservoir','cooldown','soil_at_or_above_high'}
+    safety={'control_disabled','daily_volume_cap','missing_telemetry','telemetry_context_mismatch','stale_telemetry','invalid_or_uncalibrated_sensor','insufficient_or_unknown_reservoir','cooldown','soil_at_or_above_high'}
     if reason in safety or (command.get('decision_id') and not allowed):
         return reason
     return None
