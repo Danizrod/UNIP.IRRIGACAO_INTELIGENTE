@@ -28,6 +28,7 @@ REFILL_ALERT_DOSES = 3
 PAGE = Path(__file__).with_name('bench_static') / 'index.html'
 # Readings right after a load change are discarded: settling plus telemetry delivery delay.
 SETTLE_S = 15
+FLOW_SETTLE_S = 5
 KINDS = ('calibration', 'withdrawal', 'press', 'flow')
 SOIL = Path(os.environ.get('BENCH_SOIL', '/soil'))
 WET_MAX_MS = 10000  # firmware: wet (submerged) pulses up to 10 s, 120 s per output per 10 min
@@ -108,27 +109,38 @@ def withdrawal(summary, mass_g, factor):
 
 
 def flow(summary, factor, pulse_ms, dose_ml=DOSE_ML):
-    """Vazão por bomba: retirada do reservatório (antes − depois de cada pulso) ÷ tempo do pulso.
+    """Vazão por bomba: retirada do reservatório (antes − depois) ÷ tempo ligado.
 
-    A primeira repetição de cada bomba enche a mangueira (escorva) e fica fora da média.
+    Cada grupo de pulsos seguidos da mesma bomba entre duas pesagens é uma repetição (1 ou mais
+    pulsos). O primeiro grupo de cada bomba enche a mangueira (escorva) e fica fora da média.
     """
     by_output = {}
-    for i, step in enumerate(summary):
+    i = 0
+    while i < len(summary):
+        step = summary[i]
         if step['load'] != 'pulse' or not step.get('output'):
+            i += 1
             continue
+        j = i
+        while j + 1 < len(summary) and summary[j + 1]['load'] == 'pulse' and summary[j + 1].get('output') == step['output']:
+            j += 1
+        n = j - i + 1
         before = next((s for s in reversed(summary[:i]) if s['load'] == 'empty'), None)
-        after = next((s for s in summary[i + 1:] if s['load'] == 'empty'), None)
+        after = next((s for s in summary[j + 1:] if s['load'] == 'empty'), None)
         reps = by_output.setdefault(step['output'], [])
         ml = None
         if before and after and before['median'] is not None and after['median'] is not None:
             ml = (before['median'] - after['median']) / factor
-        reps.append(dict(step=step['index'], ml=ml, ml_per_s=ml / (pulse_ms / 1000) if ml is not None else None, priming=not reps))
+        reps.append(dict(step=step['index'], pulses=n, ml=ml,
+                         ml_per_s=ml / (n * pulse_ms / 1000) if ml is not None else None, priming=not reps))
+        i = j + 1
     pumps = []
     for output, reps in sorted(by_output.items()):
-        rates = [r['ml_per_s'] for r in reps if not r['priming'] and r['ml_per_s'] is not None]
+        valid_reps = [r for r in reps if not r['priming'] and r['ml_per_s'] is not None]
+        rates = [r['ml_per_s'] for r in valid_reps]
         mean = statistics.mean(rates) if rates else None
         spread = (max(rates) - min(rates)) / mean * 100 if rates and len(rates) > 1 and mean else None
-        valid = bool(mean and mean > 0 and len(rates) >= 2)
+        valid = bool(mean and mean > 0 and sum(r['pulses'] for r in valid_reps) >= 2)
         pumps.append(dict(output=output, reps=reps, ml_per_s=mean, spread_pct=spread, valid=valid,
                           dose_s=dose_ml / mean if valid else None))
     return dict(ok=bool(pumps) and all(p['valid'] for p in pumps), pumps=pumps, pulse_ms=pulse_ms, dose_ml=dose_ml, factor=factor)
@@ -473,7 +485,8 @@ def result(session_id: str):
     if not session['steps']:
         raise HTTPException(409, 'Sessão sem etapas')
     samples = scale_samples(datetime.fromisoformat(session['started_at']) - timedelta(seconds=30))
-    summary = summarize(session['steps'], samples)
+    # Water settles in seconds; the flow test uses short weighings (5 s discarded instead of 15 s).
+    summary = summarize(session['steps'], samples, FLOW_SETTLE_S if session['kind'] == 'flow' else SETTLE_S)
     factor = session.get('factor') or provisional_factor()
     if session['kind'] == 'calibration':
         analysis = calibration(summary, session['mass_g'])

@@ -150,10 +150,36 @@ class FlowTests(unittest.TestCase):
         data = samples(steps, lambda s: 20 * level[s['index']])
         result = bench.flow(bench.summarize(steps, data), 20, 5000)
         self.assertTrue(result['ok'])
+        self.assertEqual(result['pumps'][0]['reps'][1]['pulses'], 1)
         pump = result['pumps'][0]
         self.assertAlmostEqual(pump['ml_per_s'], 20, places=3)
         self.assertTrue(pump['reps'][0]['priming'])
         self.assertAlmostEqual(pump['dose_s'], 2.5, places=3)
+
+    def test_flow_groups_consecutive_pulses(self):
+        # Fast plan: priming pulse, weigh, 3 pulses in a row, weigh (per pump).
+        loads = []
+        for output in (3, 2):
+            loads += [('pulse', output), ('empty', None), ('pulse', output), ('pulse', output), ('pulse', output), ('empty', None)]
+        steps = []
+        for i, (load, output) in enumerate(loads):
+            start = T0 + timedelta(seconds=i * 30)
+            steps.append(dict(index=i, load=load, label=load, output=output, started_at=start.isoformat(),
+                              ended_at=(start + timedelta(seconds=30)).isoformat()))
+        mass, level = 1000.0, {}
+        for step in steps:  # 2 s pulses at 25 mL/s = 50 g; priming 70 g
+            if step['load'] == 'pulse':
+                first = not any(s['load'] == 'pulse' and s['output'] == step['output'] for s in steps[:step['index']])
+                mass -= 70 if first else 50
+            level[step['index']] = mass
+        data = samples(steps, lambda s: 20 * level[s['index']])
+        result = bench.flow(bench.summarize(steps, data, bench.FLOW_SETTLE_S), 20, 2000)
+        self.assertTrue(result['ok'])
+        for pump in result['pumps']:
+            self.assertEqual([r['pulses'] for r in pump['reps']], [1, 3])
+            self.assertTrue(pump['reps'][0]['priming'])
+            self.assertAlmostEqual(pump['ml_per_s'], 25, places=3)
+            self.assertAlmostEqual(pump['dose_s'], 2.0, places=3)
 
     def test_wet_pulse_limits(self):
         from pydantic import ValidationError
