@@ -25,7 +25,7 @@ int main(){
  f.connectivity(false);s.sampled_at=240;f.tick(s,240);assert(!p.enabled);s.soil=70;f.tick(s,240);s.soil=20;s.sampled_at=241;f.tick(s,241);assert(p.enabled);s.valid=false;f.tick(s,242);assert(!p.enabled);
  j.fail=true;Controller closed(l,j,p);closed.connectivity(true);closed.synchronize();s={true,40,100,0,300,true,1000};assert(!closed.submit({"journal",300,310,10,5},s,300));
  Buffer<int>b(2);b.push(1);b.push(2);b.push(3);assert(b.dropped==1&&*b.front()==1);b.acknowledged();assert(*b.front()==2);
- RelativeSoilCalibration soil{"test-only",3000,1000};assert(*soil.index(2000)==50);assert(!soil.index(0));
+ RelativeSoilCalibration soil{"test-only",3000,1000};assert(*soil.index(2000)==50);assert(!soil.index(0));assert(*soil.index(900)==100);assert(*soil.index(3150)==0);assert(!soil.index(3300));assert(!soil.index(700));
  assert(*withdrawn_ml(1000,990,1,true)==10);
  // Differential withdrawal works on any tare (negative readings), rejects gains and disturbances.
  assert(*cycle_withdrawal_ml(-600,-650,true,100)==50);assert(!cycle_withdrawal_ml(-600,-590,true,100));assert(!cycle_withdrawal_ml(-600,-750,true,100));assert(!cycle_withdrawal_ml(-600,-650,false,100));

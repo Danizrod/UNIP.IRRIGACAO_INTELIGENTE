@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <string>
@@ -10,8 +11,10 @@ struct RelativeSoilCalibration {
  std::optional<double> index(double raw)const{
   if(id.empty()||!std::isfinite(raw)||!std::isfinite(dry_raw)||!std::isfinite(wet_raw)||dry_raw==wet_raw)return {};
   double value=100*(raw-dry_raw)/(wet_raw-dry_raw);
-  if(value<0||value>100)return {}; // Out-of-calibration range is not silently clipped.
-  return value;
+  // 16/11: readings drift slightly past the drained-saturation point (and right after a dose, wetter
+  // than it). Up to 10 points beyond either end is clamped; farther is a sensor/calibration fault.
+  if(value<-10||value>110)return {};
+  return std::clamp(value,0.0,100.0);
  }
 };
 struct SensorAdapter {virtual ~SensorAdapter()=default;virtual bool sample()=0;};
