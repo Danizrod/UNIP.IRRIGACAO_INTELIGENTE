@@ -185,8 +185,14 @@ let live=null,session=null,plan=[],timer=null,stepIdx=-1,stepEnds=0,stepStarted=
 
 // ---------- reservatório ----------
 let pendingRefill=null,lastLevel=null;
+let resOverride=null;
 function renderReservoir(){
-  const v=live.reservoir||{known:false,level:'unknown',message:'Sem dados.'};
+  let v=live.reservoir||{known:false,level:'unknown',message:'Sem dados.'};
+  const seen=live.units&&live.units[0]&&live.units[0].payload.collected_at;
+  if(resOverride&&seen&&new Date(seen)>=new Date(resOverride.at))resOverride=null; // telemetry caught up
+  if(resOverride&&v.known){const ml=resOverride.ml,usable=Math.max(0,ml-v.reserve_ml),doses=Math.floor(usable/50);
+    v={...v,ml,usable_ml:usable,doses,level:usable<50?'empty':doses<3?'low':'ok',
+       message:`Atualizado pelo último pulso manual (−${fmt(resOverride.withdrawn,0)} mL): ~${doses} doses de 50 mL acima da reserva.`};}
   $('resAlert').className='alert '+v.level;$('resAlert').textContent=v.message;
   if(v.known){
     $('resMl').textContent=fmt(v.ml,0)+' mL';
@@ -228,6 +234,8 @@ async function pulse(output){
       (d.status==='done'?`<p>Ligada por ${fmt(d.on_ms,0)} ms (pedido ${fmt(d.requested_ms,0)} ms) · tempo restante no limite ${d.mode==='wet'?'na água':'a seco'}: ${fmt((d.budget_left_ms||0)/1000,1)} s · ${d.ina_samples} leituras do INA3221.</p>
       <table><tr><th>INA3221</th><th>Corrente de pico</th><th>Tensão mínima</th></tr>${ina}</table>`:'');
     if(d.status==='done')beep(880,120);
+    // The board already deducted this pulse; show it now (telemetry only every 60 s).
+    if(d.reservoir_ml!=null){resOverride={ml:d.reservoir_ml,at:d.at,withdrawn:d.withdrawn_ml};renderReservoir();}
   }catch(e){$('pumpResult').textContent='Falhou: '+e.message;}
   finally{setTimeout(()=>document.querySelectorAll('.pumpBtn').forEach(b=>b.disabled=false),1000);}
 }

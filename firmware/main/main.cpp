@@ -105,6 +105,7 @@ static constexpr int64_t manual_max_ms=2000,manual_rest_ms=10000,manual_budget_m
 // Wet mode (pump submerged, flow calibration; the user confirms on the page): longer pulses, larger budget.
 static constexpr int64_t wet_max_ms=10000,wet_budget_ms=120000;
 static bool manual_wet=false;
+static double manual_withdrawn_ml=NAN;
 static int64_t manual_pulse_ms=0; // accepted pulse length (overrun guard); not changed by later requests
 static bool manual_enabled=false;
 static std::atomic<int> manual_output{-1};
@@ -285,6 +286,8 @@ static void manual_result(const std::string& id,int output,const char* status,co
  if(output>=1&&output<=3){int64_t now=esp_timer_get_time()/1000;size_t i=output-1;
   int64_t used=now-manual_window_start_ms[i]>manual_window_ms?0:manual_used_ms[i];cJSON_AddNumberToObject(j,"budget_left_ms",static_cast<double>(std::max<int64_t>(0,(manual_wet?wet_budget_ms:manual_budget_ms)-used)));}
  cJSON_AddStringToObject(j,"mode",manual_wet?"wet":"dry");
+ if(peaks){add_optional(j,"withdrawn_ml",std::isfinite(manual_withdrawn_ml)?std::optional<double>(manual_withdrawn_ml):std::nullopt);
+  add_optional(j,"reservoir_ml",controller?controller->reservoir():std::nullopt);}
  if(peaks){auto a=cJSON_AddArrayToObject(j,"ina");cJSON_AddNumberToObject(j,"ina_samples",peaks->samples);
   for(size_t ch=0;ch<3;++ch){auto c=cJSON_CreateObject();cJSON_AddNumberToObject(c,"channel",ch+1);
    add_optional(c,"peak_current_a",std::isfinite(peaks->peak_current_a[ch])?std::optional<double>(peaks->peak_current_a[ch]):std::nullopt);
@@ -296,6 +299,11 @@ static void manual_finish(const char* status,const char* reason){
  int output=manual_output.exchange(-1);if(output<0)return;
  int64_t now=esp_timer_get_time()/1000,on=now-manual_started_ms;size_t i=output;
  manual_last_end_ms[i]=now;manual_used_ms[i]+=std::min(on,(manual_wet?wet_max_ms:manual_max_ms)+500);
+ // 16/11: pumps stay submerged, so a manual pulse also leaves the reservoir. Estimate it from the
+ // pot's calibrated flow (dose_ml / dose time) and the GPIO time (the timer cuts at the request).
+ manual_withdrawn_ml=NAN;
+ for(size_t u=0;u<3;++u)if(unit_output[u]==output&&dose_ms[u]>0&&std::isfinite(dose_volume_ml)&&controller){
+  double ml=std::min(on,manual_pulse_ms)*dose_volume_ml/dose_ms[u];if(controller->withdraw(ml))manual_withdrawn_ml=ml;}
  auto peaks=hardware::take_peaks();manual_result(manual_id,output+1,status,reason,on,&peaks);
  ESP_LOGI(TAG,"Manual pulse output %d ended after %lld ms (%s)",output+1,static_cast<long long>(on),reason);
 }

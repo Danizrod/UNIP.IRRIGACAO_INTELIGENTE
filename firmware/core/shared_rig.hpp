@@ -74,6 +74,11 @@ public:
   if(available_ml&&std::isfinite(*available_ml)&&*available_ml>=0&&std::isfinite(minimum_reserve_ml)&&minimum_reserve_ml>=0){reservoir_ml=available_ml;reserve_ml=minimum_reserve_ml;}
   persist=std::move(save);
  }
+ // Water pumped outside a cycle (manual pulses), estimated from calibrated flow; pumps off only.
+ bool withdraw(double ml){
+  if(running()||!reservoir_ml||!std::isfinite(ml)||ml<0)return false;
+  reservoir_ml=std::max(0.0,*reservoir_ml-ml);changed();return reservoir_ml.has_value();
+ }
  std::optional<double> reservoir()const{return reservoir_ml;}
  double reserve()const{return reserve_ml;}
  bool running()const{for(auto&c:controls)if(c->running())return true;return false;}

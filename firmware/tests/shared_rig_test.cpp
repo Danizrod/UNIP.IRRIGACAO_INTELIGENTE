@@ -74,7 +74,9 @@ int main(){
  assert(r3.submit(0,{"persisted",2002,2020,40,5},sensors[0],2002));assert(*saved.back().first==650);
  at(2007,-338,false);r3.tick(sensors,2007);at(2009,-338,true);r3.tick(sensors,2009);
  assert(e2.size()&&*r3.reservoir()==662&&*saved.back().first==662);
- storage_ok=false;assert(!r3.set_reservoir(900,200));assert(!r3.reservoir());
+ assert(r3.withdraw(12.5)&&*r3.reservoir()==649.5&&*saved.back().first==649.5); // manual pulse estimate
+ assert(!r3.withdraw(-1)&&*r3.reservoir()==649.5);
+ storage_ok=false;assert(!r3.set_reservoir(900,200));assert(!r3.reservoir());assert(!r3.withdraw(5));
  at(2040,-338,true);r3.tick(sensors,2040);assert(!r3.submit(1,{"unsaved",2040,2050,20,5},sensors[1],2040));
  // Per-unit limits (physical pumps differ in flow): each unit only accepts its own dose time;
  // an uncalibrated unit never actuates while the others still can.
