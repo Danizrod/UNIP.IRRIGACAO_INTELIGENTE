@@ -272,3 +272,16 @@ Testes na placa (`-3`/`-4`):
 - **Bomba 1 substituída (16/11, ~22:30):** a troca de bornes confirmou o defeito na bomba antiga. Na saída 2 ela puxou 0,36 A e não girou, enquanto a saída 3 acionou a bomba 2 normalmente (0,26 A). O usuário colocou uma bomba nova guardada. Pulsos de 1 s na saída 3, reservatório vazio: 0,071 A no CH3, 5,24 V, funcionando segundo o usuário. Corrente baixa coerente com bomba sem carga hidráulica. Vazão medida pelo usuário no copo (16/11): 2 s = 50 mL. O tempo de dose de 2,0 s do pot-01 foi mantido.
 - **Solo saturado (16/11, 23:25, ~30 min após regar à mão até escorrer):** pot-01 = 1201,5, pot-02 = 1326, pot-03 = 1454,5 (12 leituras, variação ≤ 13). Calibração `soil-20261116-dry-sat`: índice 0 = seco, 100 = saturado drenado. O pot-01 ainda caía devagar (1191 às 23:25). O firmware passa a aceitar até 10 pontos além dos extremos, arredondando para 0–100. Além disso, a leitura é inválida.
 - **Limites provisórios do piloto:** inferior 55, superior 75; dose 50 mL; 45 min por vaso. Escolhidos acima do meio da faixa para não secar a superfície durante a germinação do manjericão (semeado pelo usuário após a calibração). O protocolo pede ajustá-los com os dados do piloto.
+
+### Piloto iniciado (16/11/2026, 20:40 local / 23:40 UTC)
+
+- **Placa:** `physical-irrigation-1` com `irrigation=1` (boot: "Automatic irrigation ENABLED"). Doses de 2,0, 2,0 e 2,5 s; 50 mL; 45 min por vaso; limites 55/75; telemetria a 60 s. Pulsos manuais passam a descontar do reservatório pela vazão calibrada.
+- **Servidor:** `PHYSICAL_CONTROL_ENABLED=true` no `.env` e serviço `controller` (perfil `control`) ativo.
+- **Configurações** `tcc-2026`, calibração `soil-20261116-dry-sat`, cooldown 2700 s, teto 300 mL/24 h, telemetria válida por 180 s, estabilização 20 s:
+  - T1 (pot-01): a cada 8 h, provisório;
+  - T2 (pot-02): histerese;
+  - T3 (pot-03): histerese de contingência durante o piloto (`prediction_fallback_enabled`), sem modelo.
+
+  A placa recebeu o heartbeat ("Decision service online"). Primeiras decisões: `soil_at_or_above_high` nos três (índice 100, recém-saturados).
+- **Reservatório:** 1000 mL, reserva 400 mL. Manjericão (6 sementes por vaso) semeado pelo usuário após a calibração.
+- **Pendente:** treinar e congelar o modelo do T3 após ≥ 48 h com ciclos; ajustar T1 e limites pelo consumo do piloto; definir início/fim da comparação no Grafana.

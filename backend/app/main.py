@@ -92,7 +92,8 @@ def command_list(device_id: str, limit: int = Query(default=50,ge=1,le=500),unit
 def configure(item: DecisionConfiguration):
     with connect() as conn:
         conn.execute("INSERT INTO control_configs(device_id,payload) VALUES(%s,%s) ON CONFLICT(device_id,(payload->>'experiment_id'),(payload->>'unit_id')) DO UPDATE SET payload=excluded.payload,updated_at=now()", (item.device_id,Jsonb(item.model_dump(mode='json'))))
-    return {'status':'stored','physical_actuation_enabled':False}
+    from app.control import source_enabled
+    return {'status':'stored','physical_actuation_enabled':item.source=='physical' and source_enabled('physical')}
 
 
 class EvaluationRequest(StrictContract):
