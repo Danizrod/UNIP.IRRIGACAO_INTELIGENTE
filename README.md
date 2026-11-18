@@ -18,6 +18,7 @@ Pastas anteriores em `.archify/` são versões históricas; o link acima identif
 - [Tarefas](docs/tasks-tcc.md): checklist até a entrega prática.
 - [Ambiente local](docs/ambiente-local.md): execução, acesso e testes.
 - [Protocolo de testes](docs/protocolo-testes.md): tratamentos, medição compartilhada, métricas e calendário.
+- [Evidências](docs/evidencias/): print do painel da bancada e registros de serviços/banco do piloto (18/11).
 - `docs/referencias/`: três documentos originais preservados.
 
 ## Escopo e estado
