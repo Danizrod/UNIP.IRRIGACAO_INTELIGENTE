@@ -22,10 +22,10 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 - [x] Implementar backup e verificar restauração em banco temporário isolado.
 - [x] Preparar serviço de backup diário enquanto Docker estiver ativo.
 - [ ] Configurar backup e cópia adicional no notebook definitivo.
-- [ ] Definir pinagem e montar circuito elétrico, hidráulico e plataforma de pesagem.
-- [ ] Calibrar solo, pesagem e medição elétrica; registrar método e erro.
-- [ ] Medir vazão/água entregue e testar vazamento, sifonamento e estabilidade.
-- [ ] Definir faixa de umidade e limites de duração, volume e intervalo.
+- [x] Definir pinagem e montar circuito elétrico, hidráulico e plataforma de pesagem (montagem final em 16/11).
+- [ ] Calibrar solo, pesagem e medição elétrica; registrar método e erro (16/11: solo com pontos seco/saturado; pesagem reprovada por deriva; erro não quantificado).
+- [ ] Medir vazão/água entregue e testar vazamento, sifonamento e estabilidade (vazão medida em copo em 14–16/11; demais pendentes).
+- [x] Definir faixa de umidade e limites de duração, volume e intervalo (16/11, provisórios: 55–75, 50 mL, 45 min, 300 mL/dia; revisar com o piloto).
 
 ## Diagnóstico da bancada com LED
 
@@ -34,7 +34,7 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 - [x] Compilar o diagnóstico Arduino, verificar backup completo de 4 MB e restaurar programa original após o teste.
 - [x] Identificar o borne original com LED como GPIO26 por teste e observação do usuário.
 - [x] Mapear os três bornes por teste com LED: original D26, segundo D25 e último D27.
-- [ ] Associar canais do INA3221 aos ramos e registrar sensor/bomba/tratamento.
+- [x] Associar canais do INA3221 aos ramos e registrar sensor/bomba/tratamento.
 - [ ] Conferir alimentação, proteção indutiva, circuito de base, corrente das bombas e fonte.
 - [ ] Identificar capacidade da célula de carga e validar massa máxima.
 - [x] Revisar sketch web e exemplo serial de pesagem; registrar filtros, bloqueios e ressalvas da biblioteca.
@@ -46,7 +46,7 @@ Entrega em **01/12/2026**. Opção A: 30 dias contínuos, um ESP32 e três vasos
 - [x] Alimentar `mass_g` pela balança, registrar reposição por MQTT e persistir a contabilidade do reservatório (06/11, testado na placa).
 - [x] Implementar drivers de sensores no ESP-IDF e painel ao vivo no Grafana (05/11; compilado, gravação pendente).
 - [x] Gravar firmware na placa e confirmar telemetria física no banco (05/11, Wi-Fi/MQTT TLS a cada 60 s).
-- [ ] Replanejar início/fim dos 30 dias após preparação; testes com LED não contam como ensaio.
+- [x] Replanejar início/fim após preparação (04/11: dias disponíveis até 01/12; piloto iniciado em 16/11 20:40).
 
 ## Firmware e controle
 
@@ -103,8 +103,8 @@ Os itens seguintes dependem de dados físicos e do protocolo:
 
 ## Marcos propostos
 
-- [ ] Coleta piloto, calibração, modelo e bancada prontos até **31/10**.
-- [ ] Comparação de **01/11 00:00 a 01/12 00:00**, com 30 dias completos (São Paulo).
+- [ ] Coleta piloto, calibração, modelo e bancada prontos até **31/10** (não cumprido; piloto iniciado em 16/11).
+- [ ] Comparação de **01/11 00:00 a 01/12 00:00**, com 30 dias completos (substituída em 04/11: dias disponíveis após o piloto até 01/12).
 - [ ] Análise incremental em novembro e fechamento/entrega em **01/12**.
 
 Datas condicionadas à aquisição, calibração e dados suficientes. Três vasos fornecem um caso por tratamento; quinzenas e leituras sucessivas não são réplicas. Não abreviar os 30 dias nem declarar início antes da preparação. Replanejar se necessário, mantendo orçamento fixo e limitações explícitas. Metas de desempenho são expectativas a testar.
