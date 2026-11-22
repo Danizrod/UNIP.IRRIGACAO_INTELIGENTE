@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 import psycopg
 from psycopg.rows import dict_row
@@ -89,6 +90,7 @@ def save_command(item):
         return True
 
 
+CLOCK_SKEW = timedelta(seconds=5)
 TRANSITIONS = {'queued': {'accepted','rejected'}, 'published': {'accepted','rejected'}, 'accepted': {'started','failed'}, 'started': {'completed','failed'}, 'completed': set(), 'rejected': set(), 'failed': set(), 'expired': set()}
 
 
@@ -114,7 +116,9 @@ def save_event(item):
         if item.device_id != command['device_id'] or item.source != command['source'] or (item.unit_id is not None and item.unit_id!=command['payload']['unit_id']) or (item.experiment_id is not None and item.experiment_id!=command['payload']['experiment_id']) or (item.treatment is not None and item.treatment!=command['payload']['treatment']):
             raise ValueError('Evento diverge do comando')
         latest = conn.execute('SELECT occurred_at FROM command_events WHERE command_id=%s ORDER BY occurred_at DESC LIMIT 1', (item.command_id,)).fetchone()
-        if item.occurred_at < command['issued_at'] or (latest and item.occurred_at < latest['occurred_at']):
+        # The board clock (NTP) and the server clock differ by a fraction of a second: an immediate
+        # reply can be stamped just before issued_at (22/11: −0.35 s). Tolerate that skew only.
+        if item.occurred_at < command['issued_at'] - CLOCK_SKEW or (latest and item.occurred_at < latest['occurred_at']):
             raise ValueError('Evento fora de ordem temporal')
         if item.status not in TRANSITIONS[command['status']]:
             raise ValueError('Transição inválida')

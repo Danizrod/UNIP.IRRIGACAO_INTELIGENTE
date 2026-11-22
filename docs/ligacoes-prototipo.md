@@ -285,3 +285,19 @@ Testes na placa (`-3`/`-4`):
   A placa recebeu o heartbeat ("Decision service online"). Primeiras decisões: `soil_at_or_above_high` nos três (índice 100, recém-saturados).
 - **Reservatório:** 1000 mL, reserva 400 mL. Manjericão (6 sementes por vaso) semeado pelo usuário após a calibração.
 - **Pendente:** treinar e congelar o modelo do T3 após ≥ 48 h com ciclos; ajustar T1 e limites pelo consumo do piloto; definir início/fim da comparação no Grafana.
+
+### Primeiras regas e comando travado (22/11/2026)
+
+- **Secagem:** índice em 22/11 12:37 local: pot-01 = 80, pot-02 = 59, pot-03 = 46. O pot-03 foi o primeiro a cruzar 55.
+- **Comando travado (02:39 local):** primeiro comando do T3 (fallback por histerese).
+  - A placa recusou em 0,4 s com `shared_mass_not_stable`, porque a balança oscila ~5 g, no limite de 5 g, e fica estável em só ~48 % das leituras.
+  - A ingestão descartou a recusa (`invalid_contract_or_state`): pelo relógio da placa, o evento ocorreu 0,35 s antes do `issued_at` do servidor.
+  - Resultado: o comando ficou `published` por 13 h e a barreira `active_command` travou a bancada inteira.
+- **Correção no backend:** tolerância de 5 s de diferença de relógio no `save_event` (`CLOCK_SKEW`), com teste. A recusa original foi reprocessada e o comando passou para `rejected`.
+- **Rega às 12:43 local:** após duas recusas por balança instável, o terceiro comando do pot-03 foi aceito e a bomba 3 ligou.
+  - Balança: −40 g (estimativa; a deriva não importa num intervalo curto).
+  - Reservatório contabilizado: 950 mL.
+  - O ciclo terminou como `failed`/`invalid_measurement` após 3,8 s: a água caiu perto do sensor, o ADC foi a 1184 (índice ~125, além de 110) e o firmware encerra o ciclo quando a leitura do solo fica inválida durante a dose.
+  - A retirada não foi medida e a dose máxima (50 mL) ficou descontada.
+- **Pendente (firmware, requer USB):** durante a dose, só tempo e balança deveriam invalidar o ciclo, não a leitura do solo; avaliar também o limite de estabilidade da balança (5 g).
+

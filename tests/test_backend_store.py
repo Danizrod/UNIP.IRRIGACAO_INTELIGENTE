@@ -76,6 +76,16 @@ class BackendStoreTests(unittest.TestCase):
         with store.connect() as conn:
             self.assertEqual(conn.execute('SELECT status FROM commands').fetchone()['status'],'completed')
 
+    def test_event_tolerates_small_clock_skew(self):
+        # 22/11: the board rejected a command 0.35 s "before" issued_at (clock skew); the event was
+        # discarded and the command stayed published, blocking the whole rig.
+        store.save_command(self.command)
+        with self.assertRaises(ValueError):
+            store.save_event(self.event('rejected', -10))
+        self.assertTrue(store.save_event(self.event('rejected', -0.35)))
+        with store.connect() as conn:
+            self.assertEqual(conn.execute('SELECT status FROM commands').fetchone()['status'], 'rejected')
+
     def test_persisted_latch_reset_config(self):
         decision=store.evaluate('sim-01',uuid4())
         self.assertTrue(decision['hysteresis_latched'])
