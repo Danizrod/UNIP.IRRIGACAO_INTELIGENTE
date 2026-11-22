@@ -284,7 +284,8 @@ Testes na placa (`-3`/`-4`):
 
   A placa recebeu o heartbeat ("Decision service online"). Primeiras decisões: `soil_at_or_above_high` nos três (índice 100, recém-saturados).
 - **Reservatório:** 1000 mL, reserva 400 mL. Manjericão (6 sementes por vaso) semeado pelo usuário após a calibração.
-- **Pendente:** treinar e congelar o modelo do T3 após ≥ 48 h com ciclos; ajustar T1 e limites pelo consumo do piloto; definir início/fim da comparação no Grafana.
+- **Pendente:** decidir o tratamento do T3 sem modelo; T1 e limites seguem os provisórios.
+- **22/11:** por decisão do usuário, o piloto passou a contar como início da comparação (16/11 20:40 a 01/12). Grafana: `inicio` = 2026-11-16T20:40:00-03:00, `fim` = 2026-12-01T00:00:00-03:00. Desvios no [protocolo](protocolo-testes.md#calendário-e-início).
 
 ### Primeiras regas e comando travado (22/11/2026)
 

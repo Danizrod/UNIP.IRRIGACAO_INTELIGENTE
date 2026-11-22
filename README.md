@@ -31,9 +31,11 @@ Decisão aprovada: **opção A — 30 dias contínuos, um ESP32 e três vasos**,
 
 Bancada identificada em 01/11/2026: ESP32 de 30 pinos, DHT22 configurado, HX711, INA3221 e três BD135 NPN. Sensores A/B/C correspondem a GPIO33/32/34. Os três bornes foram identificados com LED/resistor: original GPIO26, segundo testado GPIO25 e último GPIO27. A imagem conceitual foi produzida antes dessa identificação; o mapa atualizado está no guia. Ver [ligações e diagnóstico](docs/ligacoes-prototipo.md).
 
+**Estado em 22/11/2026.** Comparação T1/T2/T3 em andamento desde 16/11 20:40 até 01/12 (~14 dias, decisão de 22/11; desvios no [protocolo](docs/protocolo-testes.md#calendário-e-início)). Primeiras regas automáticas em 22/11; firmware `physical-irrigation-2`.
+
 **Estado em 18/11/2026.** Bancada montada e alimentada por fonte externa; bombas submersas no reservatório, vazão medida em copo (bombas 1 e 2: 50 mL em 2 s; bomba 3: 50 mL em 2,5 s). Solo calibrado com pontos seco e saturado por vaso (`soil-20261116-dry-sat`; ponto seco do pot-02 sob suspeita). Manjericão semeado (6 sementes por vaso) em 16/11. Firmware `physical-irrigation-1` com irrigação automática habilitada e backend com controle físico ligado (`PHYSICAL_CONTROL_ENABLED`). Reservatório contabilizado por reposição registrada menos doses e pulsos manuais, não pesado (pesagem segue reprovada por deriva). Piloto iniciado em 16/11 às 20:40 (23:40 UTC): T1 por horário, T2 por histerese, T3 pela regra do T2 até haver modelo. Até 17/11 nenhuma rega, pois os vasos continuam saturados (índice 100). Detalhes em [ligações do protótipo](docs/ligacoes-prototipo.md).
 
-Próximos passos: com ≥ 48 h de ciclos, treinar e congelar o modelo do T3, fixar T1 e os limites pelo consumo do piloto e iniciar a comparação até 01/12 (menos de 30 dias, por decisão de 04/11; ver [protocolo](docs/protocolo-testes.md)). Metas de economia >20%, MAE <3 pontos e conformidade ≥95% são expectativas, não resultados. Ainda não há resultados físicos.
+Próximos passos: manter a comparação até 01/12, inspecionar diariamente e decidir como tratar o T3 sem modelo (menos de 30 dias, por decisão de 04/11; ver [protocolo](docs/protocolo-testes.md)). Metas de economia >20%, MAE <3 pontos e conformidade ≥95% são expectativas, não resultados. Ainda não há resultados físicos.
 
 ## Estrutura
 

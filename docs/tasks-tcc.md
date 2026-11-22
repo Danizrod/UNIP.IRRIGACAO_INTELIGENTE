@@ -92,7 +92,7 @@ Os itens seguintes dependem de dados físicos e do protocolo:
 ## Avaliação e entrega
 
 - [ ] Preparar condições equivalentes conforme o delineamento definido.
-- [ ] Executar comparação T1/T2/T3 por pelo menos 30 dias, após preparação.
+- [ ] Executar comparação T1/T2/T3 (em andamento desde 16/11 20:40 até 01/12, ~14 dias, por decisão de 22/11; desvios no [protocolo](protocolo-testes.md#calendário-e-início)).
 - [ ] Inspecionar diariamente, registrar falhas/fallback e preservar dados.
 - [ ] Analisar água, energia da bomba, umidade, erro preditivo e métricas técnicas.
 - [ ] Realizar simulações complementares separadas dos ensaios físicos.
