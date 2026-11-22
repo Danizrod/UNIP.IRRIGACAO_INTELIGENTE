@@ -299,5 +299,5 @@ Testes na placa (`-3`/`-4`):
   - Reservatório contabilizado: 950 mL.
   - O ciclo terminou como `failed`/`invalid_measurement` após 3,8 s: a água caiu perto do sensor, o ADC foi a 1184 (índice ~125, além de 110) e o firmware encerra o ciclo quando a leitura do solo fica inválida durante a dose.
   - A retirada não foi medida e a dose máxima (50 mL) ficou descontada.
-- **Pendente (firmware, requer USB):** durante a dose, só tempo e balança deveriam invalidar o ciclo, não a leitura do solo; avaliar também o limite de estabilidade da balança (5 g).
+- **Firmware `physical-irrigation-2` (gravado em 22/11, 15:37):** a leitura válida do solo continua obrigatória para **iniciar** a dose. Durante a dose, só os limites e o relógio a interrompem; o tempo calibrado desliga a bomba e a balança mede a retirada. Boot conferido com "Automatic irrigation ENABLED" e reservatório mantido em 950 mL. Pendente: avaliar o limite de estabilidade da balança (5 g).
 

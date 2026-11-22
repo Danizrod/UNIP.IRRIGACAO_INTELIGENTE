@@ -144,7 +144,7 @@ static void dequeue(){if(auto f=outbox.front()){outbox_bytes-=std::min(outbox_by
 static DurableBuffer* durable_events=nullptr;
 static std::array<Sensors,3> sensors; // Invalid by default; no fabricated physical measurements.
 // Physical acquisition settings from `provision`; absent calibration => null values, never defaults.
-static constexpr const char* firmware_version="physical-irrigation-1";
+static constexpr const char* firmware_version="physical-irrigation-2";
 static constexpr double mass_stable_span_g=5; // Provisional: ~1 g noise observed on 04/11.
 static ScaleCalibration scale_calibration;
 static std::array<RelativeSoilCalibration,3> soil_calibration;

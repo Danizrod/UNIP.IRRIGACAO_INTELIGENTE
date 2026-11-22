@@ -22,7 +22,9 @@ int main(){
  s.sampled_at=131;assert(!reboot.submit({"new-after-reboot",131,140,10,5},s,131));
  s.sampled_at=160;assert(reboot.submit({"watchdog",160,170,10,5},s,160));reboot.watchdog(161);assert(!p.enabled);
  Controller f(l,j,p);s={true,20,100,0,200,true,1000};f.tick(s,200);assert(p.enabled&&f.events.back().local);f.connectivity(true);assert(!f.synchronize());s.sampled_at=210;f.tick(s,210);assert(!p.enabled&&f.events.back().local);assert(f.synchronize());
- f.connectivity(false);s.sampled_at=240;f.tick(s,240);assert(!p.enabled);s.soil=70;f.tick(s,240);s.soil=20;s.sampled_at=241;f.tick(s,241);assert(p.enabled);s.valid=false;f.tick(s,242);assert(!p.enabled);
+ f.connectivity(false);s.sampled_at=240;f.tick(s,240);assert(!p.enabled);s.soil=70;f.tick(s,240);s.soil=20;s.sampled_at=241;f.tick(s,241);assert(p.enabled);
+ // Soil out of range during the dose (water on the sensor) no longer aborts it; the timer ends it.
+ s.valid=false;s.sampled_at=0;f.tick(s,242);assert(p.enabled&&f.running());f.tick(s,251);assert(!p.enabled&&!f.running()&&f.events.back().status=="completed"&&*f.events.back().withdrawn_ml==0);
  j.fail=true;Controller closed(l,j,p);closed.connectivity(true);closed.synchronize();s={true,40,100,0,300,true,1000};assert(!closed.submit({"journal",300,310,10,5},s,300));
  Buffer<int>b(2);b.push(1);b.push(2);b.push(3);assert(b.dropped==1&&*b.front()==1);b.acknowledged();assert(*b.front()==2);
  RelativeSoilCalibration soil{"test-only",3000,1000};assert(*soil.index(2000)==50);assert(!soil.index(0));assert(*soil.index(900)==100);assert(*soil.index(3150)==0);assert(!soil.index(3300));assert(!soil.index(700));

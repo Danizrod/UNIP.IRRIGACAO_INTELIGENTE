@@ -44,7 +44,8 @@ class Controller {
  std::function<std::string()> local_id;
  std::function<bool(const Event&)> durable_event;
  bool emit(Event event){if(durable_event)return durable_event(event);events.push_back(std::move(event));return true;}
- bool healthy(const Sensors&s,int64_t now)const{return limits.calibrated&&std::isfinite(limits.volume_ml)&&limits.volume_ml>0&&std::isfinite(limits.duration_s)&&limits.duration_s>0&&limits.low>=0&&limits.high<=100&&limits.low<limits.high&&limits.interval_s>=0&&limits.freshness_s>0&&s.valid&&std::isfinite(s.soil)&&s.soil>=0&&s.soil<=100&&std::isfinite(s.available_ml)&&std::isfinite(s.removed_ml)&&s.removed_ml>=0&&s.sampled_at<=now&&now-s.sampled_at<=limits.freshness_s;}
+ bool limits_ok()const{return limits.calibrated&&std::isfinite(limits.volume_ml)&&limits.volume_ml>0&&std::isfinite(limits.duration_s)&&limits.duration_s>0&&limits.low>=0&&limits.high<=100&&limits.low<limits.high&&limits.interval_s>=0&&limits.freshness_s>0;}
+ bool healthy(const Sensors&s,int64_t now)const{return limits_ok()&&s.valid&&std::isfinite(s.soil)&&s.soil>=0&&s.soil<=100&&std::isfinite(s.available_ml)&&std::isfinite(s.removed_ml)&&s.removed_ml>=0&&s.sampled_at<=now&&now-s.sampled_at<=limits.freshness_s;}
 public:
  std::vector<Event> events;
  Controller(Limits l,Journal&j,Actuator&p,std::function<std::string()> id={},std::function<bool(const Event&)> sink={}):limits(l),journal(j),pump(p),local_id(std::move(id)),durable_event(std::move(sink)){pump.off();last_end=journal.last_cycle_at();}
@@ -88,7 +89,10 @@ public:
  void watchdog(int64_t now){stop(now,"failed","watchdog");synchronized=false;}
  void tick(const Sensors&s,int64_t now,bool allow_fallback=true){
   if(active){
-   if(now<started||!healthy(s,now)){stop(now,"failed","invalid_measurement");return;}
+   // Valid soil is required to START a dose (submit). During the dose the water itself can push the
+   // soil reading out of range (22/11: pot-03 ADC 1184, index ~125), so only the limits and the clock
+   // can abort it; the calibrated timer still ends the pump and the scale measures the withdrawal.
+   if(now<started||!limits_ok()){stop(now,"failed","invalid_measurement");return;}
    if(settling){
     if(now>=settle_until&&s.mass_stable){finish(now,s);return;}
     if(now>settle_until+limits.settle_s+1){stop(now,"failed","mass_stabilization_timeout");return;}
