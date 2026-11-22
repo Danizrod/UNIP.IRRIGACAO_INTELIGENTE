@@ -84,6 +84,11 @@ Grafana centraliza linhas de solo por vaso/tratamento, comandos, ciclos, decisõ
 - 22/11: bancada travada por ~13 h por comando preso (corrigido no backend) e firmware trocado para `physical-irrigation-2` (~2 min no USB);
 - até 22/11 os vasos secavam da saturação de 16/11, sem regas: essa parte inicial é comum aos três.
 
+**Plano do T3 (decisão do usuário em 22/11/2026):** o T3 segue pela regra do T2 até ter ≥ 48 h com ciclos de rega e ≥ 60 pares válidos do pot-03 (previsto para 24–25/11). Então o modelo é treinado só com dados do pot-03 anteriores a um horário de corte, congelado com versão registrada, e a contingência é desligada. Análise:
+- água, energia e regas: os três tratamentos na janela inteira (16/11 20:40 a 01/12);
+- efeito da previsão e erro do modelo (MAE/RMSE): só do corte até 01/12, com dados não vistos no treino;
+- antes do corte, o T3 é declarado "sem modelo". Limitação: treino curto, dentro do ensaio, um único vaso.
+
 - Até 31/10: componentes, montagem, calibração, coleta piloto, modelo e testes físicos aprovados. Software sem drivers físicos não significa bancada concluída.
 - Ensaio: **01/11/2026 00:00 a 01/12/2026 00:00**, horário de São Paulo — 30 dias completos. Usar intervalo fechado no início e aberto no fim; definir esses limites explicitamente na análise.
 - Durante novembro: backups, inspeção diária, gráficos e análise incremental; congelar a coleta só no fim. Entrega em 01/12 deixa poucas horas para fechamento. Modelo T3 precisa existir antes de novembro; treinamento em novembro não substitui 30 dias de avaliação de um modelo congelado.
