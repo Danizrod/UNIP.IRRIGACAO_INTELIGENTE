@@ -1,11 +1,12 @@
 import os
 from datetime import timedelta
+from uuid import uuid4
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from app.contracts import Telemetry
+from app.contracts import Telemetry, CommandEvent
 
 
 class MessageConflict(ValueError):
@@ -183,6 +184,7 @@ def evaluate(device_id, request_id, unit_id=None, experiment_id=None):
         row = conn.execute("SELECT p.payload FROM predictions p JOIN telemetry t ON t.device_id=p.device_id AND t.message_id=(p.payload->>'telemetry_message_id')::uuid WHERE p.device_id=%s AND t.experiment_id=%s AND t.unit_id=%s AND t.source=%s ORDER BY p.predicted_at DESC LIMIT 1", (device_id,config.experiment_id,config.unit_id,config.source)).fetchone()
         prediction = Prediction.model_validate(row['payload']) if row else None
         previous = conn.execute("SELECT issued_at FROM commands WHERE device_id=%s AND payload->>'experiment_id'=%s AND payload->>'unit_id'=%s AND status NOT IN ('rejected','expired') ORDER BY issued_at DESC LIMIT 1", (device_id,config.experiment_id,config.unit_id)).fetchone()
+        close_interrupted_cycles(conn, device_id)
         active = conn.execute("SELECT 1 FROM commands WHERE device_id=%s AND payload->>'experiment_id'=%s AND payload->>'unit_id'=%s AND (status IN ('published','accepted','started') OR (status='queued' AND expires_at>now()))", (device_id,config.experiment_id,config.unit_id)).fetchone()
         now = datetime.now(timezone.utc)
         config_key = configuration_key(config)
@@ -230,8 +232,35 @@ def resolve_configuration(conn, device_id, unit_id=None, experiment_id=None):
     return DecisionConfiguration.model_validate(rows[0]['payload'])
 
 
+def close_interrupted_cycles(conn, device_id):
+    """Fail accepted/started commands when telemetry proves the board rebooted after them.
+
+    The firmware turns every pump off at boot and does not resume a cycle, so a reboot after the
+    last event means the cycle ended without a terminal event (23/11: TASK_WDT reset during the
+    pot-01 settle kept the command 'started' and blocked the rig). The water is not measured."""
+    rows=conn.execute("""SELECT c.command_id,c.source,c.payload,max(e.occurred_at) AS last_at FROM commands c JOIN command_events e USING(command_id)
+        WHERE c.device_id=%s AND c.status IN ('accepted','started') GROUP BY c.command_id""",(device_id,)).fetchall()
+    closed=0
+    for row in rows:
+        # First boot after the last event; require 60 s of uptime on that boot so events persisted
+        # before the reset (sent ahead of telemetry) land first.
+        boot=conn.execute("""WITH b AS (SELECT collected_at-make_interval(secs=>(payload->>'uptime_s')::float) AS at,(payload->>'uptime_s')::float AS up
+            FROM telemetry WHERE device_id=%s AND payload ? 'uptime_s' AND collected_at>%s)
+            SELECT min(at) AS at FROM b WHERE at>%s AND EXISTS(SELECT 1 FROM b b2 WHERE b2.up>=60 AND b2.at>%s)""",
+            (device_id,row['last_at'],row['last_at']+CLOCK_SKEW,row['last_at']+CLOCK_SKEW)).fetchone()
+        if not boot['at']:
+            continue
+        event=CommandEvent(event_id=uuid4(),command_id=row['command_id'],device_id=device_id,source=row['source'],occurred_at=boot['at'],
+            status='failed',reason='server_detected_device_reset',unit_id=row['payload'].get('unit_id'),experiment_id=row['payload'].get('experiment_id'),treatment=row['payload'].get('treatment'))
+        conn.execute('INSERT INTO command_events(event_id,command_id,occurred_at,status,payload) VALUES(%s,%s,%s,%s,%s)',(event.event_id,event.command_id,event.occurred_at,'failed',Jsonb(event.model_dump(mode='json'))))
+        conn.execute("UPDATE commands SET status='failed' WHERE command_id=%s",(row['command_id'],))
+        closed+=1
+    return closed
+
+
 def device_barrier(conn, device_id, now):
-    # Once delivered/accepted/started, only a terminal device event can release the pump.
+    close_interrupted_cycles(conn, device_id)
+    # Once delivered/accepted/started, only a terminal device event (or proof of a reboot) releases the pump.
     if conn.execute("SELECT 1 FROM commands WHERE device_id=%s AND status IN ('published','accepted','started') LIMIT 1",(device_id,)).fetchone():
         return 'active_command'
     if conn.execute("SELECT 1 FROM interventions WHERE device_id=%s AND status='started' LIMIT 1",(device_id,)).fetchone():

@@ -302,3 +302,11 @@ Testes na placa (`-3`/`-4`):
   - A retirada não foi medida e a dose máxima (50 mL) ficou descontada.
 - **Firmware `physical-irrigation-2` (gravado em 22/11, 15:37):** a leitura válida do solo continua obrigatória para **iniciar** a dose. Durante a dose, só os limites e o relógio a interrompem; o tempo calibrado desliga a bomba e a balança mede a retirada. Boot conferido com "Automatic irrigation ENABLED" e reservatório mantido em 950 mL. Pendente: avaliar o limite de estabilidade da balança (5 g).
 
+### Regas de 22–23/11 e reinício no meio do ciclo
+
+- **T2 (pot-02), 22/11 22:24 local:** uma recusa por balança instável; no minuto seguinte, a dose foi aceita e completou (2,0 s, retirada medida de 41,8 mL). O índice foi de ~55 a 90.
+- **T1 (pot-01), 23/11 04:11:** a dose do horário começou e a placa reiniciou 18 s depois (`TASK_WDT`, motivo 6), durante a espera de estabilização da balança. A bomba já tinha cumprido os 2 s: o índice foi de 75 a 100. A retirada não foi medida e o reservatório descontou a dose máxima (50 mL → 858 mL).
+- **Comando travado:** a placa não retoma o ciclo após o boot e não emitiu evento final. O comando ficou `started` por ~5 h e a barreira `active_command` travou a bancada.
+- **Correção no backend (`close_interrupted_cycles`):** quando a telemetria comprova um boot posterior ao último evento (com ≥ 60 s de uptime, para os eventos gravados antes do reset chegarem primeiro), o comando passa a `failed` com motivo `server_detected_device_reset`, no horário do boot e sem medição. Aplicado ao comando de 04:11, cujo horário de falha ficou em 04:11:51.
+- **Queda de internet (23/11):** sem telemetria de 06:44 a 08:41 (~2 h). A placa reiniciou por software às 08:24 ao perder o Wi-Fi. Esse período é **dado ausente**, não leitura válida nem consumo zero.
+- **Pendente:** a causa do `TASK_WDT` durante a estabilização não foi investigada; sem log serial, não se sabe se é travamento no código ou interferência da bomba.

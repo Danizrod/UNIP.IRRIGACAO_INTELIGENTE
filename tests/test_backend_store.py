@@ -126,3 +126,24 @@ class BackendStoreTests(unittest.TestCase):
             row=conn.execute('SELECT reason,payload FROM rejected_messages').fetchone()
             self.assertEqual(row['reason'],'invalid_contract')
             self.assertEqual(bytes(row['payload']),b'{bad')
+
+    def test_reboot_during_cycle_releases_barrier(self):
+        # 23/11: TASK_WDT reset during the pot-01 settle left the command 'started' and blocked the rig.
+        store.save_command(self.command)
+        store.save_event(self.event('accepted'))
+        store.save_event(self.event('started', 0.1))
+        def telemetry(at, uptime):
+            store.save(Telemetry(schema_version=1,message_id=uuid4(),device_id='sim-01',experiment_id='sim-store',unit_id='pot-01',treatment='T2',source='simulation',collected_at=at,calibration_id='sim-v1',soil_raw=2000,soil_index=20,sensor_valid=True,reservoir_mass_g=1000,uptime_s=uptime))
+        telemetry(self.now+timedelta(seconds=0.5), 3600)  # same boot as the start: still running
+        with store.connect() as conn:
+            self.assertEqual(store.device_barrier(conn,'sim-01',datetime.now(timezone.utc)),'active_command')
+        telemetry(self.now+timedelta(seconds=40), 30)  # rebooted, but events may still be in flight
+        with store.connect() as conn:
+            self.assertEqual(store.close_interrupted_cycles(conn,'sim-01'),0)
+        telemetry(self.now+timedelta(seconds=90), 80)  # booted 10 s after the start
+        with store.connect() as conn:
+            self.assertEqual(store.close_interrupted_cycles(conn,'sim-01'),1)
+            row=conn.execute("SELECT status,payload FROM command_events WHERE status='failed'").fetchone()
+            self.assertEqual(row['payload']['reason'],'server_detected_device_reset')
+            self.assertIsNone(row['payload']['volume_ml'])
+            self.assertEqual(conn.execute('SELECT status FROM commands').fetchone()['status'],'failed')

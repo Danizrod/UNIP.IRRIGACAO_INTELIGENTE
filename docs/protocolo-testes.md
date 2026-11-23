@@ -82,6 +82,7 @@ Grafana centraliza linhas de solo por vaso/tratamento, comandos, ciclos, decisõ
 - parâmetros não foram congelados por um piloto separado: T1 a cada 8 h e limites 55/75 são os provisórios de 16/11;
 - T3 opera pela regra do T2 (contingência, sem modelo) desde o início; o tempo sem previsão deve ser contado separadamente;
 - 22/11: bancada travada por ~13 h por comando preso (corrigido no backend) e firmware trocado para `physical-irrigation-2` (~2 min no USB);
+- 23/11: reinício da placa durante a dose do T1 (água aplicada, retirada não medida), bancada travada por ~5 h (corrigido no backend) e ~2 h sem telemetria por queda de internet;
 - até 22/11 os vasos secavam da saturação de 16/11, sem regas: essa parte inicial é comum aos três.
 
 **Plano do T3 (decisão do usuário em 22/11/2026):** o T3 segue pela regra do T2 até ter ≥ 48 h com ciclos de rega e ≥ 60 pares válidos do pot-03 (previsto para 24–25/11). Então o modelo é treinado só com dados do pot-03 anteriores a um horário de corte, congelado com versão registrada, e a contingência é desligada. Análise:
