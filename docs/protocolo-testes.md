@@ -78,7 +78,7 @@ Grafana centraliza linhas de solo por vaso/tratamento, comandos, ciclos, decisõ
 
 **Decisão do usuário em 04/11/2026:** a entrega permanece em 01/12/2026 e a comparação T1/T2/T3 roda pelos dias disponíveis após validação da bancada e piloto, menos que 30 dias. Duração real, início e fim devem ser registrados; a análise usa a janela comum válida e divide em duas metades (não quinzenas fixas), que continuam não sendo réplicas. Modelo de T3 treinado com piloto curto: registrar essa limitação. Os itens abaixo descrevem o plano original.
 
-**Início registrado (decisão do usuário em 22/11/2026):** a comparação T1/T2/T3 conta desde **16/11/2026 20:40** (23:40 UTC), quando o piloto começou, até **01/12/2026 00:00**, horário de São Paulo: cerca de 14 dias, não 30. Desvios do plano a declarar na análise:
+**Início registrado (decisão do usuário em 22/11/2026):** a comparação T1/T2/T3 conta desde **16/11/2026 20:40** (23:40 UTC), quando o piloto começou, até **05/12/2026 00:00**, horário de São Paulo (fim estendido pelo usuário em 26/11: prazo dos testes é 05/12): cerca de 18 dias, não 30. Desvios do plano a declarar na análise:
 - parâmetros não foram congelados por um piloto separado: T1 a cada 8 h e limites 55/75 são os provisórios de 16/11;
 - T3 opera pela regra do T2 (contingência, sem modelo) desde o início; o tempo sem previsão deve ser contado separadamente;
 - 22/11: bancada travada por ~13 h por comando preso (corrigido no backend) e firmware trocado para `physical-irrigation-2` (~2 min no USB);
@@ -86,8 +86,8 @@ Grafana centraliza linhas de solo por vaso/tratamento, comandos, ciclos, decisõ
 - até 22/11 os vasos secavam da saturação de 16/11, sem regas: essa parte inicial é comum aos três.
 
 **Plano do T3 (decisão do usuário em 22/11/2026):** o T3 segue pela regra do T2 até ter ≥ 48 h com ciclos de rega e ≥ 60 pares válidos do pot-03 (previsto para 24–25/11). Então o modelo é treinado só com dados do pot-03 anteriores a um horário de corte, congelado com versão registrada, e a contingência é desligada. Análise:
-- água, energia e regas: os três tratamentos na janela inteira (16/11 20:40 a 01/12);
-- efeito da previsão e erro do modelo (MAE/RMSE): só do corte até 01/12, com dados não vistos no treino;
+- água, energia e regas: os três tratamentos na janela inteira (16/11 20:40 a 05/12);
+- efeito da previsão e erro do modelo (MAE/RMSE): só do corte até 05/12, com dados não vistos no treino;
 - antes do corte, o T3 é declarado "sem modelo". Limitação: treino curto, dentro do ensaio, um único vaso.
 
 - Até 31/10: componentes, montagem, calibração, coleta piloto, modelo e testes físicos aprovados. Software sem drivers físicos não significa bancada concluída.
