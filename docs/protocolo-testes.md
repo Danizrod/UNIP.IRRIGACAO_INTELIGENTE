@@ -80,6 +80,7 @@ Grafana centraliza linhas de solo por vaso/tratamento, comandos, ciclos, decisõ
 
 **Início registrado (decisão do usuário em 22/11/2026):** a comparação T1/T2/T3 conta desde **16/11/2026 20:40** (23:40 UTC), quando o piloto começou, até **05/12/2026 00:00**, horário de São Paulo (fim estendido pelo usuário em 26/11: prazo dos testes é 05/12): cerca de 18 dias, não 30. Desvios do plano a declarar na análise:
 - parâmetros não foram congelados por um piloto separado: T1 a cada 8 h e limites 55/75 são os provisórios de 16/11;
+- T1 não é horário puro: a proteção comum `soil_at_or_above_high` bloqueia a dose com índice ≥ 75 (ex.: pot-01 sem rega de 23/11 04:11 até cair abaixo de 75). Mantido assim por decisão do usuário em 26/11; reduz o consumo de referência do T1 e, portanto, a economia aparente de T2/T3;
 - T3 opera pela regra do T2 (contingência, sem modelo) desde o início; o tempo sem previsão deve ser contado separadamente;
 - 22/11: bancada travada por ~13 h por comando preso (corrigido no backend) e firmware trocado para `physical-irrigation-2` (~2 min no USB);
 - 23/11: reinício da placa durante a dose do T1 (água aplicada, retirada não medida), bancada travada por ~5 h (corrigido no backend) e ~2 h sem telemetria por queda de internet;
