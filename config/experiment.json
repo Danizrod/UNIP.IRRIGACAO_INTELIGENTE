@@ -1,18 +1,21 @@
 {
   "schema_version": 1,
-  "design": "A-continuous-30-days",
+  "design": "A-continuous-reduced",
   "experiment_id": "tcc-2026",
   "source": "physical",
   "timezone": "America/Sao_Paulo",
-  "starts_at": "2026-11-01T00:00:00-03:00",
-  "ends_at": "2026-12-01T00:00:00-03:00",
+  "starts_at": "2026-11-16T20:40:00-03:00",
+  "ends_at": "2026-12-05T00:00:00-03:00",
+  "t3_model_frozen_at": "2026-11-27T14:39:27-03:00",
   "sampling_interval_s": 60,
+  "soil_low": 55,
+  "soil_high": 75,
   "independent_units_per_treatment": 1,
   "analysis_periods_are_replicates": false,
   "units": [
-    {"unit_id": "pot-01", "treatment": "T1"},
-    {"unit_id": "pot-02", "treatment": "T2"},
-    {"unit_id": "pot-03", "treatment": "T3"}
+    {"unit_id": "pot-01", "treatment": "T1", "dose_ml": 50, "dose_s": 2.0},
+    {"unit_id": "pot-02", "treatment": "T2", "dose_ml": 50, "dose_s": 2.0},
+    {"unit_id": "pot-03", "treatment": "T3", "dose_ml": 50, "dose_s": 2.5}
   ],
-  "note": "Identidades de referência; preparar e calibrar antes de habilitar. Sem expansão de materiais, troca de plantas ou reinício na quinzena. Parâmetros/modelo devem ser congelados antes da coleta."
+  "note": "Janela real do ensaio (protocolo, decisões de 22/11 e 26/11). Água pela dose calibrada em copo (16/11); pesagem por diferença é complementar. Períodos não são réplicas."
 }
