@@ -91,6 +91,13 @@ Grafana centraliza linhas de solo por vaso/tratamento, comandos, ciclos, decisõ
 - efeito da previsão e erro do modelo (MAE/RMSE): só do corte até 05/12, com dados não vistos no treino;
 - antes do corte, o T3 é declarado "sem modelo". Limitação: treino curto, dentro do ensaio, um único vaso.
 
+**Modelo congelado em 27/11/2026 14:39 local** (`ml-417e0ba018e1c87b6575b062`, [artefato](evidencias/modelo-t3-ml-417e0ba018e1c87b6575b062.json)):
+- dados: pot-03, calibração `soil-20261116-dry-sat`, de 16/11 20:40 até o corte 27/11 14:38 local (17:38:35 UTC); 14.225 leituras válidas, 11.242 pares na seleção e 2.819 no teste temporal (a partir de 25/11 02:53 UTC, com os ciclos de rega);
+- vencedor: Ridge (MAE de validação 1,29; Random Forest 9,72; Gradient Boosting 8,58; XGBoost 8,56);
+- teste: MAE 0,74 e RMSE 3,22, contra persistência MAE 0,87 e RMSE 3,21. O coeficiente do solo é ~1: o modelo fica próximo da persistência, então a antecipação esperada é pequena; registrar como limitação;
+- a contingência (`prediction_fallback_enabled`) **continua ligada**: só atua se a previsão faltar, com motivo próprio nas decisões, e evita deixar o vaso sem rega nos dias finais. O tempo em contingência é contado separadamente;
+- avaliação do modelo: de 27/11 14:39 a 05/12 00:00.
+
 - Até 31/10: componentes, montagem, calibração, coleta piloto, modelo e testes físicos aprovados. Software sem drivers físicos não significa bancada concluída.
 - Ensaio: **01/11/2026 00:00 a 01/12/2026 00:00**, horário de São Paulo — 30 dias completos. Usar intervalo fechado no início e aberto no fim; definir esses limites explicitamente na análise.
 - Durante novembro: backups, inspeção diária, gráficos e análise incremental; congelar a coleta só no fim. Entrega em 01/12 deixa poucas horas para fechamento. Modelo T3 precisa existir antes de novembro; treinamento em novembro não substitui 30 dias de avaliação de um modelo congelado.

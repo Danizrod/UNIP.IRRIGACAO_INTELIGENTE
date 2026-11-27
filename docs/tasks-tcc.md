@@ -70,7 +70,7 @@ Os itens seguintes exigem integração/validação com os componentes físicos:
 - [ ] Implementar comandos, validade, deduplicação e confirmação de execução.
 - [ ] Implementar desligamento no boot, watchdog e bloqueios de segurança.
 - [ ] Implementar buffer, reenvio, contingência por histerese e retomada sincronizada.
-- [ ] Implementar T1 fixo, T2 por histerese e decisão determinística de T3.
+- [x] Implementar T1 fixo, T2 por histerese e decisão determinística de T3 (físico desde 16/11; T1 com teto de 75, ver protocolo).
 - [ ] Completar registros de decisões, ciclos, água, energia, falhas e painéis.
 - [ ] Testar ciclo completo, desconexão, reinicialização, leituras inválidas e comandos rejeitados.
 
@@ -86,8 +86,8 @@ Os itens seguintes dependem de dados físicos e do protocolo:
 - [ ] Definir atributos, alvo de 30 min (código alinhado em 05/11) e uso de meteorologia aplicável à bancada.
 - [ ] Separar treino, validação e teste temporal sem vazamento de dados.
 - [ ] Comparar Ridge, Random Forest, Gradient Boosting e XGBoost com persistência; avaliar MAE/RMSE (pipeline pronto).
-- [ ] Versionar modelo e integrar inferência, separada do treinamento.
-- [ ] Congelar modelo, parâmetros e protocolo antes da comparação.
+- [x] Versionar modelo e integrar inferência, separada do treinamento (27/11: `ml-417e0ba018e1c87b6575b062`).
+- [ ] Congelar modelo, parâmetros e protocolo antes da comparação (não cumprido: modelo do T3 congelado em 27/11, dentro do ensaio; ver protocolo).
 
 ## Avaliação e entrega
 
